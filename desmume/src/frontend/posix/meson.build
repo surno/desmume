@@ -33,6 +33,10 @@ endif
 
 dependencies = [dep_glib2, dep_sdl, dep_pcap, dep_zlib, dep_threads]
 
+# Optional: Google Test for integration tests
+# Only resolved when tests are built in tests/meson.build
+dep_gtest = dependency('gtest', main: true, required: false)
+
 # Determine the CPU architecture of the target.
 target_cpu_64bit = false
 target_cpu_kind_x86 = false
@@ -324,4 +328,9 @@ if get_option('frontend-gtk')
 endif
 if get_option('frontend-gtk2')
   subdir('gtk2')
+endif
+
+# Conditionally include tests when enabled
+if get_option('build_tests')
+  subdir('tests')
 endif

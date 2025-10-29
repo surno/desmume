@@ -48,3 +48,9 @@ option('gdb-stub',
   value: false,
   description: 'Enable gdb stub',
 )
+
+option('build_tests',
+  type: 'boolean',
+  value: false,
+  description: 'Build Google Test-based integration tests',
+)
