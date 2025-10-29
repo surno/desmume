@@ -59,15 +59,15 @@
 #endif
 
 #include "matrix.h"
-#include "GPU_Operations.h"
 #include "render3D.h"
 #include "MMU.h"
 #include "NDSSystem.h"
 #include "utils/bits.h"
 #include "utils/task.h"
 #include "./utils/colorspacehandler/colorspacehandler.h"
-#include "filter/filter.h"
-#include "filter/xbrz.h"
+#include "../../graphics/filters/filter.h"
+#include "../../graphics/filters/xbrz.h"
+#include "../../platform/simd/GPU_Operations.h"
 
 static u8 modulate_table[64][64];
 static u8 decal_table[32][64][64];

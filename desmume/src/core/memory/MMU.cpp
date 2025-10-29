@@ -23,7 +23,7 @@
 #include <assert.h>
 #include <sstream>
 
-#include "../../utils/common/bits.h"
+#include "../../utils/bits.h"
 #include "../cpu/armcpu.h"
 #include "../../utils/debug/debug.h"
 #include "driver.h"

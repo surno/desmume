@@ -23,8 +23,8 @@
 #include "utils/bits.h"
 #include "MMU.h"
 #include "NDSSystem.h"
-#include "./filter/filter.h"
-#include "./filter/xbrz.h"
+#include "../../graphics/filters/filter.h"
+#include "../../graphics/filters/xbrz.h"
 
 
 int cur3DCore = RENDERID_NULL;

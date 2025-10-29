@@ -28,7 +28,7 @@
 #include "../../utils/debug/debug.h"
 #include "../system/NDSSystem.h"
 #include "../memory/MMU_timing.h"
-#include "../../utils/common/bits.h"
+#include "../../utils/bits.h"
 #ifdef HAVE_LUA
 #include "../../utils/debug/lua-engine.h"
 #endif

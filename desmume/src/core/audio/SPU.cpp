@@ -41,7 +41,7 @@
 #include "../system/NDSSystem.h"
 #include "../../utils/file/emufile.h"
 #include "../graphics/matrix.h"
-#include "../../utils/common/bits.h"
+#include "../../utils/bits.h"
 
 
 static inline s16 read16(u32 addr) { return (s16)_MMU_read16<ARMCPU_ARM7,MMU_AT_DEBUG>(addr); }

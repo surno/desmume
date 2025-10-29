@@ -18,7 +18,7 @@
 
 #include "videofilter.h"
 #include <string.h>
-#include "../common.h"
+#include "../../utils/common/common.h"
 
 
 // This function is called when running a filter in multithreaded mode.

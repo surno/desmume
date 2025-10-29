@@ -25,8 +25,8 @@
 #include "slot1comp_protocol.h"
 
 #include "../core/io/slot1.h"
-#include "../NDSSystem.h"
-#include "../emufile.h"
+#include "../core/system/NDSSystem.h"
+#include "../utils/file/emufile.h"
 
 //quick architecture overview:
 //NAND receives GC bus commands from MMU.cpp

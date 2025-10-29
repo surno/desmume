@@ -40,7 +40,6 @@
 #include "driver.h"
 #include "emufile.h"
 #include "matrix.h"
-#include "GPU_Operations.h"
 #include "MMU.h"
 #include "render3D.h"
 #include "mem.h"
@@ -51,6 +50,7 @@
 #include "FIFO.h"
 #include "utils/bits.h"
 #include "movie.h" //only for currframecounter which really ought to be moved into the core emu....
+#include "../../platform/simd/GPU_Operations.h"
 
 //#define _SHOW_VTX_COUNTERS	// show polygon/vertex counters on screen
 #ifdef _SHOW_VTX_COUNTERS

@@ -30,7 +30,7 @@
 #include <wchar.h>
 #include <wctype.h>
 #include <string.h>
-#include "../emufile.h"
+#include "file/emufile.h"
 
 
 #define LE16(x) (x)

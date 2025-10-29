@@ -20,10 +20,10 @@
 
 #include <string.h>
 
-#include "../debug.h"
-#include "../NDSSystem.h"
-#include "../path.h"
-#include "../emufile.h"
+#include "../utils/debug/debug.h"
+#include "../core/system/NDSSystem.h"
+#include "../utils/common/path.h"
+#include "../utils/file/emufile.h"
 
 #define EEPROM		0x52504545
 #define SRAM_		0x4D415253

@@ -22,7 +22,7 @@
 #include "types.h"
 #include "gfx3d.h"
 #include "texcache.h"
-#include "./filter/filter.h"
+#include "../../graphics/filters/filter.h"
 
 #define kUnsetTranslucentPolyID 255
 #define DEPTH_EQUALS_TEST_TOLERANCE 255

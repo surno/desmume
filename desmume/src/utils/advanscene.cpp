@@ -22,9 +22,9 @@
 #include "tinyxml/tinyxml.h"
 
 #include "advanscene.h"
-#include "../common.h"
-#include "../mc.h"
-#include "../emufile.h"
+#include "common/common.h"
+#include "../core/storage/mc.h"
+#include "file/emufile.h"
 
 ADVANsCEne advsc;
 

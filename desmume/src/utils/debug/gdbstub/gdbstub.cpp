@@ -32,9 +32,9 @@
 #include <rthreads/rthreads.h>
 #include "../gdbstub.h"
 #include "../types.h"
-#include "../NDSSystem.h"
-#include "../armcpu.h"
-#include "../MMU.h"
+#include "../../core/system/NDSSystem.h"
+#include "../../core/cpu/armcpu.h"
+#include "../../core/memory/MMU.h"
 
 // For cpu_mutex
 #ifdef HOST_WINDOWS

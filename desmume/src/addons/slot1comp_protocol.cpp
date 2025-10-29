@@ -19,9 +19,9 @@
 
 #include <string.h>
 
-#include "../armcpu.h"
+#include "../core/cpu/armcpu.h"
 #include "../encrypt.h"
-#include "../emufile.h"
+#include "../utils/file/emufile.h"
 #include "../utils/decrypt/decrypt.h"
 
 static _KEY1 key1((const u8*)arm7_key);

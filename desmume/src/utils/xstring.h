@@ -29,7 +29,7 @@
 #include <cstdio>
 
 #include "../types.h"
-#include "../emufile.h"
+#include "file/emufile.h"
 
 
 std::string strsub(const std::string& str, int pos, int len);

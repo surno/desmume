@@ -25,8 +25,8 @@
 #include <stack>
 
 #include "../types.h"
-#include "../debug.h"
-#include "../emufile.h"
+#include "debug/debug.h"
+#include "file/emufile.h"
 #include "retro_dirent.h"
 #include "retro_stat.h"
 #include "file/file_path.h"

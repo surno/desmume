@@ -20,8 +20,8 @@
 #ifndef DESMUME_INTERFACE_H
 #define DESMUME_INTERFACE_H
 
-#include "../../types.h"
-#include "../../movie.h"
+#include "../../../types.h"
+#include "../../../utils/movie/movie.h"
 
 #ifdef HAVE_GL_GL_H
 #define INCLUDE_OPENGL_2D

@@ -21,9 +21,9 @@
 
 #include <SDL.h>
 #include "interface.h"
-#include "../../NDSSystem.h"
-#include "../../GPU.h"
-#include "../posix/shared/ctrlssdl.h"
+#include "../../../core/system/NDSSystem.h"
+#include "../../../core/graphics/GPU.h"
+#include "../../sdl/input/ctrlssdl.h"
 
 #ifdef INCLUDE_OPENGL_2D
 	#include <GL/gl.h>

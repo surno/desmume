@@ -26,7 +26,7 @@
 #include "../../core/cpu/instructions.h"
 #include "../../core/cpu/cp15.h"
 #include "../../core/system/NDSSystem.h"
-#include "../common/xstring.h"
+#include "../xstring.h"
 #include "../movie/movie.h"
 
 #ifdef HAVE_LUA

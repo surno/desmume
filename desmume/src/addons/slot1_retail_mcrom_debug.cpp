@@ -30,7 +30,7 @@
 #include "../core/io/slot1.h"
 #include "../utils/common/path.h"
 #include "../core/system/NDSSystem.h"
-#include "../utils/common/fsnitro.h"
+#include "../utils/fsnitro.h"
 
 class Slot1_Retail_DEBUG : public ISlot1Interface, public ISlot1Comp_Protocol_Client
 {

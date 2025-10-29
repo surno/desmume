@@ -31,7 +31,7 @@
 #endif
 
 #ifdef TARGET_INTERFACE
-#include "frontend/interface/interface.h"
+#include "frontend/api/interface/interface.h"
 #endif
 
 #ifdef HAVE_JIT

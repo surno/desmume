@@ -53,9 +53,24 @@ if meson.get_compiler('cpp').get_id() == 'clang'
 endif
 
 includes = include_directories(
-  '../../../src',
-  '../../../src/libretro-common/include',
-  '../../../src/frontend',
+  '../../..',
+  '../../../libretro-common/include',
+  '../../../frontend',
+  # Core and subdirectories for headers like MMU.h, mem.h, etc.
+  '../../../core',
+  '../../../core/cpu',
+  '../../../core/memory',
+  '../../../core/graphics',
+  '../../../core/audio',
+  '../../../core/io',
+  '../../../core/system',
+  '../../../core/storage',
+  # Utils headers: debug.h, common.h, movie.h, etc.
+  '../../../utils',
+  '../../../utils/file',
+  '../../../utils/common',
+  '../../../utils/debug',
+  '../../../utils/movie',
 )
 
 libdesmume_src = [
@@ -88,7 +103,6 @@ libdesmume_src = [
   '../../../core/io/slot1.cpp',
   '../../../core/io/slot2.cpp',
   '../../../core/io/rtc.cpp',
-  '../../../core/io/mic.cpp',
   
   # Core Storage
   '../../../core/storage/firmware.cpp',
@@ -112,16 +126,16 @@ libdesmume_src = [
   '../../../utils/common/common.cpp',
   '../../../utils/common/path.cpp',
   '../../../utils/common/version.cpp',
-  '../../../utils/common/advanscene.cpp',
-  '../../../utils/common/datetime.cpp',
-  '../../../utils/common/guid.cpp',
-  '../../../utils/common/emufat.cpp',
-  '../../../utils/common/fsnitro.cpp',
-  '../../../utils/common/xstring.cpp',
-  '../../../utils/common/task.cpp',
-  '../../../utils/common/vfat.cpp',
-  '../../../utils/common/dlditool.cpp',
-  '../../../utils/common/colorspacehandler/colorspacehandler.cpp',
+  '../../../utils/advanscene.cpp',
+  '../../../utils/datetime.cpp',
+  '../../../utils/guid.cpp',
+  '../../../utils/emufat.cpp',
+  '../../../utils/fsnitro.cpp',
+  '../../../utils/xstring.cpp',
+  '../../../utils/task.cpp',
+  '../../../utils/vfat.cpp',
+  '../../../utils/dlditool.cpp',
+  '../../../utils/colorspacehandler/colorspacehandler.cpp',
   
   # Utils File
   '../../../utils/file/emufile.cpp',
@@ -131,6 +145,7 @@ libdesmume_src = [
   # Utils Debug
   '../../../utils/debug/debug.cpp',
   '../../../utils/debug/gdbstub/gdbstub.cpp',
+  '../../../utils/debug/gdbstub/gdbstub_threading.cpp',
   
   # Utils Database
   '../../../utils/database/Database.cpp',
@@ -155,7 +170,7 @@ libdesmume_src = [
   '../../../graphics/filters/xbrz.cpp',
   
   # Addons
-  '../../addons/slot2_auto.cpp', '../../addons/slot2_mpcf.cpp', '../../addons/slot2_paddle.cpp', '../../addons/slot2_gbagame.cpp', '../../addons/slot2_none.cpp', '../../addons/slot2_rumblepak.cpp', '../../addons/slot2_guitarGrip.cpp', '../../addons/slot2_hcv1000.cpp', '../../addons/slot2_expMemory.cpp', '../../addons/slot2_piano.cpp', '../../addons/slot2_passme.cpp', '../../addons/slot1_none.cpp', '../../addons/slot1_r4.cpp', '../../addons/slot1_retail_nand.cpp', '../../addons/slot1_retail_auto.cpp', '../../addons/slot1_retail_mcrom.cpp', '../../addons/slot1_retail_mcrom_debug.cpp', '../../addons/slot1comp_mc.cpp', '../../addons/slot1comp_rom.cpp', '../../addons/slot1comp_protocol.cpp',
+  '../../../addons/slot2_auto.cpp', '../../../addons/slot2_mpcf.cpp', '../../../addons/slot2_paddle.cpp', '../../../addons/slot2_gbagame.cpp', '../../../addons/slot2_none.cpp', '../../../addons/slot2_rumblepak.cpp', '../../../addons/slot2_guitarGrip.cpp', '../../../addons/slot2_hcv1000.cpp', '../../../addons/slot2_expMemory.cpp', '../../../addons/slot2_piano.cpp', '../../../addons/slot2_passme.cpp', '../../../addons/slot1_none.cpp', '../../../addons/slot1_r4.cpp', '../../../addons/slot1_retail_nand.cpp', '../../../addons/slot1_retail_auto.cpp', '../../../addons/slot1_retail_mcrom.cpp', '../../../addons/slot1_retail_mcrom_debug.cpp', '../../../addons/slot1comp_mc.cpp', '../../../addons/slot1comp_rom.cpp', '../../../addons/slot1comp_protocol.cpp',
   
   # Remaining files
   '../../../FIFO.cpp',
@@ -255,15 +270,18 @@ elif dep_alsa.found()
     '../../../frontend/posix/shared/mic_alsa.cpp',
   ]
 else
-  # mic.cpp is already included in the main libdesmume_src list
+  # Use the core mic implementation when no audio backend is available
+  libdesmume_src += [
+    '../../../core/io/mic.cpp',
+  ]
 endif
 
 if dep_soundtouch.found()
   dependencies += dep_soundtouch
   add_global_arguments('-DHAVE_LIBSOUNDTOUCH', language: ['c', 'cpp'])
   libdesmume_src += [
-    '../../core/audio/metaspu/SndOut.cpp',
-    '../../core/audio/metaspu/Timestretcher.cpp',
+    '../../../core/audio/metaspu/SndOut.cpp',
+    '../../../core/audio/metaspu/Timestretcher.cpp',
   ]
 endif
 
@@ -275,12 +293,12 @@ endif
 simd = import('unstable-simd')
 cxx = meson.get_compiler('cpp')
 rval = simd.check('colorspacehandler',
-  sse2: '../../../utils/common/colorspacehandler/colorspacehandler_SSE2.cpp',
+  sse2: '../../../utils/colorspacehandler/colorspacehandler_SSE2.cpp',
   # TODO: add these two even in generic builds.
-  #avx2: '../../utils/common/colorspacehandler/colorspacehandler_AVX2.cpp',
-  #avx512: '../../utils/common/colorspacehandler/colorspacehandler_AVX512.cpp',
+  #avx2: '../../utils/colorspacehandler/colorspacehandler_AVX2.cpp',
+  #avx512: '../../utils/colorspacehandler/colorspacehandler_AVX512.cpp',
   # TODO: add support for this in meson.
-  #altivec: '../../utils/common/colorspacehandler/colorspacehandler_AltiVec.cpp',
+  #altivec: '../../utils/colorspacehandler/colorspacehandler_AltiVec.cpp',
   compiler: cxx,
   include_directories: includes,
 )

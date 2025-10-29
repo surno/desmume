@@ -33,7 +33,7 @@ Since GCROMCTRL[26:24] can't represent 'data block size' of 1 or 2, it is assume
 
 #include "../system/NDSSystem.h"
 #include "../../utils/file/emufile.h"
-#include "../../utils/common/vfat.h"
+#include "../../utils/vfat.h"
 #include "../../utils/common/path.h"
 
 bool slot1_R4_path_type = false;

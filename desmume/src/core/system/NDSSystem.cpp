@@ -42,7 +42,7 @@
 #include "cp15.h"
 #include "bios.h"
 #include "debug.h"
-#include "cheatSystem.h"
+#include "utils/cheats/cheatSystem.h"
 #include "movie.h"
 #include "FIFO.h"
 #include "readwrite.h"
@@ -57,7 +57,7 @@
 #include "emufile.h"
 #include "SPU.h"
 #include "wifi.h"
-#include "Database.h"
+#include "utils/database/Database.h"
 #include "frontend/modules/Disassembler.h"
 
 #if defined(HOST_WINDOWS) && !defined(TARGET_INTERFACE)

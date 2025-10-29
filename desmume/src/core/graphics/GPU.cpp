@@ -37,7 +37,7 @@
 #include "../system/NDSSystem.h"
 #include "matrix.h"
 #include "../../utils/file/emufile.h"
-#include "../../utils/common/task.h"
+#include "../../utils/task.h"
 
 
 #ifdef FASTBUILD
@@ -48,7 +48,7 @@
 	#define DISABLE_COMPOSITOR_FAST_PATHS
 #endif
 
-#include "GPU_Operations.cpp"
+#include "../../platform/simd/GPU_Operations.cpp"
 
 #if defined(ENABLE_AVX2)
 	#define USEVECTORSIZE_256
