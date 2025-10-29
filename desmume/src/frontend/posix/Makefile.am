@@ -19,49 +19,97 @@ endif
 SUBDIRS += $(PO_DIR)
 noinst_LIBRARIES = libdesmume.a
 libdesmume_a_SOURCES = \
-	../../armcpu.cpp ../../armcpu.h \
-	../../arm_instructions.cpp \
-	../../agg2d.h ../../agg2d.inl \
-	../../bios.cpp ../../bios.h ../../bits.h ../../cp15.cpp ../../cp15.h \
+	# Core CPU
+	../../core/cpu/armcpu.cpp ../../core/cpu/armcpu.h \
+	../../core/cpu/arm_instructions.cpp \
+	../../core/cpu/thumb_instructions.cpp \
+	../../core/cpu/cp15.cpp ../../core/cpu/cp15.h \
+	../../core/cpu/instructions.h \
+	../../core/cpu/instruction_attributes.h \
+	# Core Memory
+	../../core/memory/MMU.cpp ../../core/memory/MMU.h \
+	../../core/memory/MMU_timing.h \
+	../../core/memory/mem.h \
+	# Core Graphics
+	../../core/graphics/GPU.cpp ../../core/graphics/GPU.h \
+	../../core/graphics/GPU_osd.h \
+	../../core/graphics/render3D.cpp ../../core/graphics/render3D.h \
+	../../core/graphics/rasterize.cpp ../../core/graphics/rasterize.h \
+	../../core/graphics/texcache.cpp ../../core/graphics/texcache.h \
+	../../core/graphics/gfx3d.cpp ../../core/graphics/gfx3d.h \
+	../../core/graphics/matrix.cpp ../../core/graphics/matrix.h \
+	# Core Audio
+	../../core/audio/SPU.cpp ../../core/audio/SPU.h \
+	../../core/audio/metaspu/metaspu.cpp ../../core/audio/metaspu/metaspu.h \
+	# Core I/O
+	../../core/io/wifi.cpp ../../core/io/wifi.h \
+	../../core/io/slot1.cpp ../../core/io/slot1.h \
+	../../core/io/slot2.cpp ../../core/io/slot2.h \
+	../../core/io/rtc.cpp ../../core/io/rtc.h \
+	../../core/io/mic.cpp ../../core/io/mic.h \
+	# Core Storage
+	../../core/storage/firmware.cpp ../../core/storage/firmware.h \
+	../../core/storage/mc.cpp ../../core/storage/mc.h \
+	../../core/storage/saves.cpp ../../core/storage/saves.h \
+	# Core System
+	../../core/system/NDSSystem.cpp ../../core/system/NDSSystem.h \
+	../../core/system/bios.cpp ../../core/system/bios.h \
+	../../core/system/registers.h \
+	# Platform OpenGL
+	../../platform/opengl/OGLRender.cpp ../../platform/opengl/OGLRender.h \
+	../../platform/opengl/OGLRender_3_2.cpp ../../platform/opengl/OGLRender_3_2.h \
+	../../platform/opengl/OGLRender_ES3.cpp ../../platform/opengl/OGLRender_ES3.h \
+	# Platform SDL
+	../../platform/sdl/audio/sndsdl.cpp ../../platform/sdl/audio/sndsdl.h \
+	../../platform/sdl/input/ctrlssdl.cpp ../../platform/sdl/input/ctrlssdl.h \
+	../../platform/sdl/graphics/sdl_3Demu.cpp ../../platform/sdl/graphics/sdl_3Demu.h \
+	../../platform/sdl/window/draw_sdl_window.cpp ../../platform/sdl/window/draw_sdl_window.h \
+	# Utils Common
+	../../utils/common/common.cpp ../../utils/common/common.h \
+	../../utils/common/path.cpp ../../utils/common/path.h \
+	../../utils/common/version.cpp ../../utils/common/version.h \
+	../../utils/common/advanscene.cpp ../../utils/common/advanscene.h \
+	../../utils/common/datetime.cpp ../../utils/common/datetime.h \
+	../../utils/common/guid.cpp ../../utils/common/guid.h \
+	../../utils/common/emufat.cpp ../../utils/common/emufat.h \
+	../../utils/common/fsnitro.cpp ../../utils/common/fsnitro.h \
+	../../utils/common/xstring.cpp ../../utils/common/xstring.h \
+	../../utils/common/task.cpp ../../utils/common/task.h \
+	../../utils/common/vfat.h ../../utils/common/vfat.cpp \
+	../../utils/common/dlditool.cpp \
+	../../utils/common/colorspacehandler/colorspacehandler.cpp ../../utils/common/colorspacehandler/colorspacehandler.h \
+	# Utils File
+	../../utils/file/emufile.h ../../utils/file/emufile.cpp \
+	../../utils/file/readwrite.cpp ../../utils/file/readwrite.h \
+	../../utils/file/ROMReader.cpp ../../utils/file/ROMReader.h \
+	# Utils Debug
+	../../utils/debug/debug.cpp ../../utils/debug/debug.h \
+	# Utils Database
+	../../utils/database/Database.cpp ../../utils/database/Database.h \
+	# Utils Movie
+	../../utils/movie/movie.cpp ../../utils/movie/movie.h \
+	# Utils Cheats
+	../../utils/cheats/cheatSystem.cpp ../../utils/cheats/cheatSystem.h \
+	# Graphics Filters
+	../../graphics/filters/2xsai.cpp ../../graphics/filters/bilinear.cpp ../../graphics/filters/deposterize.cpp ../../graphics/filters/epx.cpp ../../graphics/filters/filter.h \
+	../../graphics/filters/hq2x.cpp ../../graphics/filters/hq2x.h \
+	../../graphics/filters/hq3x.cpp ../../graphics/filters/hq3x.dat \
+	../../graphics/filters/hq4x.cpp ../../graphics/filters/hq4x.dat \
+	../../graphics/filters/interp.h ../../graphics/filters/lq2x.cpp ../../graphics/filters/lq2x.h ../../graphics/filters/scanline.cpp \
+	../../graphics/filters/videofilter.cpp ../../graphics/filters/videofilter.h \
+	../../graphics/filters/xbrz.cpp ../../graphics/filters/xbrz.h \
+	# Addons
+	../../addons/slot2_auto.cpp ../../addons/slot2_mpcf.cpp ../../addons/slot2_paddle.cpp ../../addons/slot2_gbagame.cpp ../../addons/slot2_none.cpp ../../addons/slot2_rumblepak.cpp ../../addons/slot2_guitarGrip.cpp ../../addons/slot2_hcv1000.cpp ../../addons/slot2_expMemory.cpp ../../addons/slot2_piano.cpp ../../addons/slot2_passme.cpp ../../addons/slot1_none.cpp ../../addons/slot1_r4.cpp ../../addons/slot1_retail_nand.cpp ../../addons/slot1_retail_auto.cpp ../../addons/slot1_retail_mcrom.cpp ../../addons/slot1_retail_mcrom_debug.cpp ../../addons/slot1comp_mc.cpp ../../addons/slot1comp_mc.h ../../addons/slot1comp_rom.h ../../addons/slot1comp_rom.cpp ../../addons/slot1comp_protocol.h ../../addons/slot1comp_protocol.cpp \
+	# Remaining files
+	../../FIFO.cpp ../../FIFO.h \
+	../../encrypt.h ../../encrypt.cpp \
 	../../commandline.h ../../commandline.cpp \
-	../../common.cpp ../../common.h \
-	../../debug.cpp ../../debug.h \
 	../../driver.cpp ../../driver.h \
-	../../Database.cpp ../../Database.h \
-	../../emufile.h ../../emufile.cpp ../../encrypt.h ../../encrypt.cpp ../../FIFO.cpp ../../FIFO.h \
-	../../firmware.cpp ../../firmware.h ../../GPU.cpp ../../GPU.h \
-	../../GPU_osd.h \
-	../../instructions.h \
-	../../mem.h ../../mc.cpp ../../mc.h \
-	../../path.cpp ../../path.h \
-	../../readwrite.cpp ../../readwrite.h \
-	../../wifi.cpp ../../wifi.h \
-	../../mic.h \
-	../../MMU.cpp ../../MMU.h ../../MMU_timing.h ../../NDSSystem.cpp ../../NDSSystem.h ../../registers.h \
-	../../ROMReader.cpp ../../ROMReader.h \
-	../../render3D.cpp ../../render3D.h \
-	../../rtc.cpp ../../rtc.h \
-	../../saves.cpp ../../saves.h \
-	../../slot1.cpp ../../slot1.h \
-	../../slot2.cpp ../../slot2.h \
-	../../SPU.cpp ../../SPU.h \
-	../../matrix.cpp ../../matrix.h \
-	../../gfx3d.cpp ../../gfx3d.h \
-	../../thumb_instructions.cpp ../../types.h \
-	../../movie.cpp ../../movie.h \
 	../../PACKED.h ../../PACKED_END.h \
+	../../types.h \
 	../../frontend/modules/Disassembler.cpp ../../frontend/modules/Disassembler.h \
-	../../utils/advanscene.cpp ../../utils/advanscene.h \
-	../../utils/datetime.cpp ../../utils/datetime.h \
-	../../utils/guid.cpp ../../utils/guid.h \
-	../../utils/emufat.cpp ../../utils/emufat.h utils/emufat_types.h \
-	../../utils/fsnitro.cpp ../../utils/fsnitro.h \
-	../../utils/xstring.cpp ../../utils/xstring.h \
 	../../utils/decrypt/crc.cpp ../../utils/decrypt/crc.h ../../utils/decrypt/decrypt.cpp \
 	../../utils/decrypt/decrypt.h ../../utils/decrypt/header.cpp ../../utils/decrypt/header.h \
-	../../utils/task.cpp ../../utils/task.h \
-	../../utils/vfat.h ../../utils/vfat.cpp \
-	../../utils/dlditool.cpp \
 	../../utils/libfat/bit_ops.h \
 	../../utils/libfat/cache.cpp \
 	../../utils/libfat/cache.h \
@@ -96,29 +144,18 @@ libdesmume_a_SOURCES = \
 	../../utils/tinyxml/tinyxmlerror.cpp \
 	../../utils/tinyxml/tinyxmlparser.cpp \
 	../../utils/glcorearb.h \
-	../../utils/colorspacehandler/colorspacehandler.cpp ../../utils/colorspacehandler/colorspacehandler.h \
-	../../addons/slot2_auto.cpp ../../addons/slot2_mpcf.cpp ../../addons/slot2_paddle.cpp ../../addons/slot2_gbagame.cpp ../../addons/slot2_none.cpp ../../addons/slot2_rumblepak.cpp ../../addons/slot2_guitarGrip.cpp ../../addons/slot2_hcv1000.cpp ../../addons/slot2_expMemory.cpp ../../addons/slot2_piano.cpp ../../addons/slot2_passme.cpp ../../addons/slot1_none.cpp ../../addons/slot1_r4.cpp ../../addons/slot1_retail_nand.cpp ../../addons/slot1_retail_auto.cpp ../../addons/slot1_retail_mcrom.cpp ../../addons/slot1_retail_mcrom_debug.cpp ../../addons/slot1comp_mc.cpp ../../addons/slot1comp_mc.h ../../addons/slot1comp_rom.h ../../addons/slot1comp_rom.cpp ../../addons/slot1comp_protocol.h ../../addons/slot1comp_protocol.cpp \
-	../../cheatSystem.cpp ../../cheatSystem.h \
-	../../texcache.cpp ../../texcache.h ../../rasterize.cpp ../../rasterize.h \
-	../../metaspu/metaspu.cpp ../../metaspu/metaspu.h \
-	../../filter/2xsai.cpp ../../filter/bilinear.cpp ../../filter/deposterize.cpp ../../filter/epx.cpp ../../filter/filter.h \
-	../../filter/hq2x.cpp ../../filter/hq2x.h \
-	../../filter/hq3x.cpp ../../filter/hq3x.dat \
-	../../filter/hq4x.cpp ../../filter/hq4x.dat \
-	../../filter/interp.h ../../filter/lq2x.cpp ../../filter/lq2x.h ../../filter/scanline.cpp \
-	../../filter/videofilter.cpp ../../filter/videofilter.h \
-	../../filter/xbrz.cpp ../../filter/xbrz.h \
-	../../version.cpp ../../version.h \
 	../../libretro-common/compat/compat_getopt.c \
 	../../libretro-common/file/file_path.c \
 	../../libretro-common/compat/compat_strl.c \
 	../../libretro-common/features/features_cpu.c \
 	../../libretro-common/file/retro_dirent.c \
 	../../libretro-common/file/retro_stat.c \
-	../../libretro-common/rthreads/async_job.c \
-	../../libretro-common/rthreads/rsemaphore.c \
-	../../libretro-common/rthreads/rthreads.c \
-	../../libretro-common/encodings/encoding_utf.c
+	../../platform/threading/libretro-common/rthreads/async_job.c \
+	../../platform/threading/libretro-common/rthreads/rsemaphore.c \
+	../../platform/threading/libretro-common/rthreads/rthreads.c \
+	../../libretro-common/encodings/encoding_utf.c \
+	../../agg2d.h ../../agg2d.inl \
+	../../bits.h
 
 if HAVE_JIT
 libdesmume_a_SOURCES += \
@@ -207,15 +244,10 @@ endif
 libdesmume_a_SOURCES += shared/desmume_config.cpp shared/desmume_config.h
 
 if ENABLE_OPENGL_ES
-libdesmume_a_SOURCES += \
-	../../OGLRender.h ../../OGLRender_3_2.h \
-	../../OGLRender.cpp ../../OGLRender_3_2.cpp \
-	../../OGLRender_ES3.h ../../OGLRender_ES3.cpp
+# OpenGL files are already included in the main libdesmume_a_SOURCES list
 else
 if ENABLE_OPENGL_STANDARD
-libdesmume_a_SOURCES += \
-	../../OGLRender.h ../../OGLRender_3_2.h \
-	../../OGLRender.cpp ../../OGLRender_3_2.cpp
+# OpenGL files are already included in the main libdesmume_a_SOURCES list
 endif
 endif
 
@@ -225,12 +257,12 @@ else
 if HAVE_ALSA
 libdesmume_a_SOURCES += shared/mic_alsa.cpp
 else
-libdesmume_a_SOURCES += ../../mic.cpp
+# mic.cpp is already included in the main libdesmume_a_SOURCES list
 endif
 endif
 
 if HAVE_LIBSOUNDTOUCH
-libdesmume_a_SOURCES += ../../metaspu/SndOut.cpp ../../metaspu/SndOut.h ../../metaspu/Timestretcher.cpp
+libdesmume_a_SOURCES += ../../core/audio/metaspu/SndOut.cpp ../../core/audio/metaspu/SndOut.h ../../core/audio/metaspu/Timestretcher.cpp
 endif
 
 if HAVE_LIBAGG
@@ -241,7 +273,7 @@ AM_CPPFLAGS += $(LUA_CFLAGS)
 libdesmume_a_SOURCES += ../../lua-engine.cpp
 endif
 if HAVE_GDB_STUB
-libdesmume_a_SOURCES += ../../gdbstub/gdbstub.cpp
-libdesmume_a_SOURCES += ../../gdbstub/gdbstub_internal.h
-libdesmume_a_SOURCES += ../../gdbstub.h
+libdesmume_a_SOURCES += ../../utils/debug/gdbstub/gdbstub.cpp
+libdesmume_a_SOURCES += ../../utils/debug/gdbstub/gdbstub_internal.h
+libdesmume_a_SOURCES += ../../utils/debug/gdbstub.h
 endif
