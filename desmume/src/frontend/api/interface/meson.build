@@ -60,133 +60,133 @@ includes = include_directories(
 
 libdesmume_src = [
   'interface.cpp', 
-  '../../platform/sdl/window/draw_sdl_window.cpp',
+  '../../../platform/sdl/window/draw_sdl_window.cpp',
   
   # Core CPU
-  '../../core/cpu/armcpu.cpp',
-  '../../core/cpu/arm_instructions.cpp',
-  '../../core/cpu/thumb_instructions.cpp',
-  '../../core/cpu/cp15.cpp',
+  '../../../core/cpu/armcpu.cpp',
+  '../../../core/cpu/arm_instructions.cpp',
+  '../../../core/cpu/thumb_instructions.cpp',
+  '../../../core/cpu/cp15.cpp',
   
   # Core Memory
-  '../../core/memory/MMU.cpp',
+  '../../../core/memory/MMU.cpp',
   
   # Core Graphics
-  '../../core/graphics/GPU.cpp',
-  '../../core/graphics/render3D.cpp',
-  '../../core/graphics/rasterize.cpp',
-  '../../core/graphics/texcache.cpp',
-  '../../core/graphics/gfx3d.cpp',
-  '../../core/graphics/matrix.cpp',
+  '../../../core/graphics/GPU.cpp',
+  '../../../core/graphics/render3D.cpp',
+  '../../../core/graphics/rasterize.cpp',
+  '../../../core/graphics/texcache.cpp',
+  '../../../core/graphics/gfx3d.cpp',
+  '../../../core/graphics/matrix.cpp',
   
   # Core Audio
-  '../../core/audio/SPU.cpp',
-  '../../core/audio/metaspu/metaspu.cpp',
+  '../../../core/audio/SPU.cpp',
+  '../../../core/audio/metaspu/metaspu.cpp',
   
   # Core I/O
-  '../../core/io/wifi.cpp',
-  '../../core/io/slot1.cpp',
-  '../../core/io/slot2.cpp',
-  '../../core/io/rtc.cpp',
-  '../../core/io/mic.cpp',
+  '../../../core/io/wifi.cpp',
+  '../../../core/io/slot1.cpp',
+  '../../../core/io/slot2.cpp',
+  '../../../core/io/rtc.cpp',
+  '../../../core/io/mic.cpp',
   
   # Core Storage
-  '../../core/storage/firmware.cpp',
-  '../../core/storage/mc.cpp',
-  '../../core/storage/saves.cpp',
+  '../../../core/storage/firmware.cpp',
+  '../../../core/storage/mc.cpp',
+  '../../../core/storage/saves.cpp',
   
   # Core System
-  '../../core/system/NDSSystem.cpp',
-  '../../core/system/bios.cpp',
+  '../../../core/system/NDSSystem.cpp',
+  '../../../core/system/bios.cpp',
   
   # Platform SDL
-  '../../platform/sdl/audio/sndsdl.cpp',
-  '../../platform/sdl/input/ctrlssdl.cpp',
+  '../../../platform/sdl/audio/sndsdl.cpp',
+  '../../../platform/sdl/input/ctrlssdl.cpp',
   
   # Platform Threading
-  '../../platform/threading/libretro-common/rthreads/async_job.c',
-  '../../platform/threading/libretro-common/rthreads/rsemaphore.c',
-  '../../platform/threading/libretro-common/rthreads/rthreads.c',
+  '../../../platform/threading/libretro-common/rthreads/async_job.c',
+  '../../../platform/threading/libretro-common/rthreads/rsemaphore.c',
+  '../../../platform/threading/libretro-common/rthreads/rthreads.c',
   
   # Utils Common
-  '../../utils/common/common.cpp',
-  '../../utils/common/path.cpp',
-  '../../utils/common/version.cpp',
-  '../../utils/common/advanscene.cpp',
-  '../../utils/common/datetime.cpp',
-  '../../utils/common/guid.cpp',
-  '../../utils/common/emufat.cpp',
-  '../../utils/common/fsnitro.cpp',
-  '../../utils/common/xstring.cpp',
-  '../../utils/common/task.cpp',
-  '../../utils/common/vfat.cpp',
-  '../../utils/common/dlditool.cpp',
-  '../../utils/common/colorspacehandler/colorspacehandler.cpp',
+  '../../../utils/common/common.cpp',
+  '../../../utils/common/path.cpp',
+  '../../../utils/common/version.cpp',
+  '../../../utils/common/advanscene.cpp',
+  '../../../utils/common/datetime.cpp',
+  '../../../utils/common/guid.cpp',
+  '../../../utils/common/emufat.cpp',
+  '../../../utils/common/fsnitro.cpp',
+  '../../../utils/common/xstring.cpp',
+  '../../../utils/common/task.cpp',
+  '../../../utils/common/vfat.cpp',
+  '../../../utils/common/dlditool.cpp',
+  '../../../utils/common/colorspacehandler/colorspacehandler.cpp',
   
   # Utils File
-  '../../utils/file/emufile.cpp',
-  '../../utils/file/readwrite.cpp',
-  '../../utils/file/ROMReader.cpp',
+  '../../../utils/file/emufile.cpp',
+  '../../../utils/file/readwrite.cpp',
+  '../../../utils/file/ROMReader.cpp',
   
   # Utils Debug
-  '../../utils/debug/debug.cpp',
-  '../../utils/debug/gdbstub/gdbstub.cpp',
+  '../../../utils/debug/debug.cpp',
+  '../../../utils/debug/gdbstub/gdbstub.cpp',
   
   # Utils Database
-  '../../utils/database/Database.cpp',
+  '../../../utils/database/Database.cpp',
   
   # Utils Movie
-  '../../utils/movie/movie.cpp',
+  '../../../utils/movie/movie.cpp',
   
   # Utils Cheats
-  '../../utils/cheats/cheatSystem.cpp',
+  '../../../utils/cheats/cheatSystem.cpp',
   
   # Graphics Filters
-  '../../graphics/filters/2xsai.cpp',
-  '../../graphics/filters/bilinear.cpp',
-  '../../graphics/filters/deposterize.cpp',
-  '../../graphics/filters/epx.cpp',
-  '../../graphics/filters/hq2x.cpp',
-  '../../graphics/filters/hq3x.cpp',
-  '../../graphics/filters/hq4x.cpp',
-  '../../graphics/filters/lq2x.cpp',
-  '../../graphics/filters/scanline.cpp',
-  '../../graphics/filters/videofilter.cpp',
-  '../../graphics/filters/xbrz.cpp',
+  '../../../graphics/filters/2xsai.cpp',
+  '../../../graphics/filters/bilinear.cpp',
+  '../../../graphics/filters/deposterize.cpp',
+  '../../../graphics/filters/epx.cpp',
+  '../../../graphics/filters/hq2x.cpp',
+  '../../../graphics/filters/hq3x.cpp',
+  '../../../graphics/filters/hq4x.cpp',
+  '../../../graphics/filters/lq2x.cpp',
+  '../../../graphics/filters/scanline.cpp',
+  '../../../graphics/filters/videofilter.cpp',
+  '../../../graphics/filters/xbrz.cpp',
   
   # Addons
   '../../addons/slot2_auto.cpp', '../../addons/slot2_mpcf.cpp', '../../addons/slot2_paddle.cpp', '../../addons/slot2_gbagame.cpp', '../../addons/slot2_none.cpp', '../../addons/slot2_rumblepak.cpp', '../../addons/slot2_guitarGrip.cpp', '../../addons/slot2_hcv1000.cpp', '../../addons/slot2_expMemory.cpp', '../../addons/slot2_piano.cpp', '../../addons/slot2_passme.cpp', '../../addons/slot1_none.cpp', '../../addons/slot1_r4.cpp', '../../addons/slot1_retail_nand.cpp', '../../addons/slot1_retail_auto.cpp', '../../addons/slot1_retail_mcrom.cpp', '../../addons/slot1_retail_mcrom_debug.cpp', '../../addons/slot1comp_mc.cpp', '../../addons/slot1comp_rom.cpp', '../../addons/slot1comp_protocol.cpp',
   
   # Remaining files
-  '../../FIFO.cpp',
-  '../../encrypt.cpp',
-  '../../commandline.cpp',
-  '../../driver.cpp',
-  '../../frontend/modules/Disassembler.cpp',
-  '../../utils/decrypt/crc.cpp', '../../utils/decrypt/decrypt.cpp',
-  '../../utils/decrypt/header.cpp',
-  '../../utils/libfat/cache.cpp',
-  '../../utils/libfat/directory.cpp',
-  '../../utils/libfat/disc.cpp',
-  '../../utils/libfat/fatdir.cpp',
-  '../../utils/libfat/fatfile.cpp',
-  '../../utils/libfat/filetime.cpp',
-  '../../utils/libfat/file_allocation_table.cpp',
-  '../../utils/libfat/libfat.cpp',
-  '../../utils/libfat/libfat_public_api.cpp',
-  '../../utils/libfat/lock.cpp',
-  '../../utils/libfat/partition.cpp',
-  '../../utils/tinyxml/tinystr.cpp',
-  '../../utils/tinyxml/tinyxml.cpp',
-  '../../utils/tinyxml/tinyxmlerror.cpp',
-  '../../utils/tinyxml/tinyxmlparser.cpp',
-  '../../libretro-common/compat/compat_getopt.c',
-  '../../libretro-common/file/file_path.c',
-  '../../libretro-common/compat/compat_strl.c',
-  '../../libretro-common/features/features_cpu.c',
-  '../../libretro-common/file/retro_dirent.c',
-  '../../libretro-common/file/retro_stat.c',
-  '../../libretro-common/encodings/encoding_utf.c',
+  '../../../FIFO.cpp',
+  '../../../encrypt.cpp',
+  '../../../commandline.cpp',
+  '../../../driver.cpp',
+  '../../../frontend/modules/Disassembler.cpp',
+  '../../../utils/decrypt/crc.cpp', '../../../utils/decrypt/decrypt.cpp',
+  '../../../utils/decrypt/header.cpp',
+  '../../../utils/libfat/cache.cpp',
+  '../../../utils/libfat/directory.cpp',
+  '../../../utils/libfat/disc.cpp',
+  '../../../utils/libfat/fatdir.cpp',
+  '../../../utils/libfat/fatfile.cpp',
+  '../../../utils/libfat/filetime.cpp',
+  '../../../utils/libfat/file_allocation_table.cpp',
+  '../../../utils/libfat/libfat.cpp',
+  '../../../utils/libfat/libfat_public_api.cpp',
+  '../../../utils/libfat/lock.cpp',
+  '../../../utils/libfat/partition.cpp',
+  '../../../utils/tinyxml/tinystr.cpp',
+  '../../../utils/tinyxml/tinyxml.cpp',
+  '../../../utils/tinyxml/tinyxmlerror.cpp',
+  '../../../utils/tinyxml/tinyxmlparser.cpp',
+  '../../../libretro-common/compat/compat_getopt.c',
+  '../../../libretro-common/file/file_path.c',
+  '../../../libretro-common/compat/compat_strl.c',
+  '../../../libretro-common/features/features_cpu.c',
+  '../../../libretro-common/file/retro_dirent.c',
+  '../../../libretro-common/file/retro_stat.c',
+  '../../../libretro-common/encodings/encoding_utf.c',
 ]
 
 # SDL files are already included in the main libdesmume_src list
@@ -247,12 +247,12 @@ endif
 if dep_openal.found()
   dependencies += dep_openal
   libdesmume_src += [
-    '../posix/shared/mic_openal.cpp',
+    '../../../frontend/posix/shared/mic_openal.cpp',
   ]
 elif dep_alsa.found()
   dependencies += dep_alsa
   libdesmume_src += [
-    '../posix/shared/mic_alsa.cpp',
+    '../../../frontend/posix/shared/mic_alsa.cpp',
   ]
 else
   # mic.cpp is already included in the main libdesmume_src list
@@ -275,7 +275,7 @@ endif
 simd = import('unstable-simd')
 cxx = meson.get_compiler('cpp')
 rval = simd.check('colorspacehandler',
-  sse2: '../../utils/common/colorspacehandler/colorspacehandler_SSE2.cpp',
+  sse2: '../../../utils/common/colorspacehandler/colorspacehandler_SSE2.cpp',
   # TODO: add these two even in generic builds.
   #avx2: '../../utils/common/colorspacehandler/colorspacehandler_AVX2.cpp',
   #avx512: '../../utils/common/colorspacehandler/colorspacehandler_AVX512.cpp',
