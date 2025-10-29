@@ -58,48 +58,113 @@ includes = include_directories(
   '../../../src/frontend',
 )
 
-libdesmume_src = ['interface.cpp', 'draw_sdl_window.cpp']
-
-libdesmume_src += [
-  '../../armcpu.cpp',
-  '../../arm_instructions.cpp',
-  '../../bios.cpp',
-  '../../cp15.cpp',
+libdesmume_src = [
+  'interface.cpp', 
+  '../../platform/sdl/window/draw_sdl_window.cpp',
+  
+  # Core CPU
+  '../../core/cpu/armcpu.cpp',
+  '../../core/cpu/arm_instructions.cpp',
+  '../../core/cpu/thumb_instructions.cpp',
+  '../../core/cpu/cp15.cpp',
+  
+  # Core Memory
+  '../../core/memory/MMU.cpp',
+  
+  # Core Graphics
+  '../../core/graphics/GPU.cpp',
+  '../../core/graphics/render3D.cpp',
+  '../../core/graphics/rasterize.cpp',
+  '../../core/graphics/texcache.cpp',
+  '../../core/graphics/gfx3d.cpp',
+  '../../core/graphics/matrix.cpp',
+  
+  # Core Audio
+  '../../core/audio/SPU.cpp',
+  '../../core/audio/metaspu/metaspu.cpp',
+  
+  # Core I/O
+  '../../core/io/wifi.cpp',
+  '../../core/io/slot1.cpp',
+  '../../core/io/slot2.cpp',
+  '../../core/io/rtc.cpp',
+  '../../core/io/mic.cpp',
+  
+  # Core Storage
+  '../../core/storage/firmware.cpp',
+  '../../core/storage/mc.cpp',
+  '../../core/storage/saves.cpp',
+  
+  # Core System
+  '../../core/system/NDSSystem.cpp',
+  '../../core/system/bios.cpp',
+  
+  # Platform SDL
+  '../../platform/sdl/audio/sndsdl.cpp',
+  '../../platform/sdl/input/ctrlssdl.cpp',
+  
+  # Platform Threading
+  '../../platform/threading/libretro-common/rthreads/async_job.c',
+  '../../platform/threading/libretro-common/rthreads/rsemaphore.c',
+  '../../platform/threading/libretro-common/rthreads/rthreads.c',
+  
+  # Utils Common
+  '../../utils/common/common.cpp',
+  '../../utils/common/path.cpp',
+  '../../utils/common/version.cpp',
+  '../../utils/common/advanscene.cpp',
+  '../../utils/common/datetime.cpp',
+  '../../utils/common/guid.cpp',
+  '../../utils/common/emufat.cpp',
+  '../../utils/common/fsnitro.cpp',
+  '../../utils/common/xstring.cpp',
+  '../../utils/common/task.cpp',
+  '../../utils/common/vfat.cpp',
+  '../../utils/common/dlditool.cpp',
+  '../../utils/common/colorspacehandler/colorspacehandler.cpp',
+  
+  # Utils File
+  '../../utils/file/emufile.cpp',
+  '../../utils/file/readwrite.cpp',
+  '../../utils/file/ROMReader.cpp',
+  
+  # Utils Debug
+  '../../utils/debug/debug.cpp',
+  '../../utils/debug/gdbstub/gdbstub.cpp',
+  
+  # Utils Database
+  '../../utils/database/Database.cpp',
+  
+  # Utils Movie
+  '../../utils/movie/movie.cpp',
+  
+  # Utils Cheats
+  '../../utils/cheats/cheatSystem.cpp',
+  
+  # Graphics Filters
+  '../../graphics/filters/2xsai.cpp',
+  '../../graphics/filters/bilinear.cpp',
+  '../../graphics/filters/deposterize.cpp',
+  '../../graphics/filters/epx.cpp',
+  '../../graphics/filters/hq2x.cpp',
+  '../../graphics/filters/hq3x.cpp',
+  '../../graphics/filters/hq4x.cpp',
+  '../../graphics/filters/lq2x.cpp',
+  '../../graphics/filters/scanline.cpp',
+  '../../graphics/filters/videofilter.cpp',
+  '../../graphics/filters/xbrz.cpp',
+  
+  # Addons
+  '../../addons/slot2_auto.cpp', '../../addons/slot2_mpcf.cpp', '../../addons/slot2_paddle.cpp', '../../addons/slot2_gbagame.cpp', '../../addons/slot2_none.cpp', '../../addons/slot2_rumblepak.cpp', '../../addons/slot2_guitarGrip.cpp', '../../addons/slot2_hcv1000.cpp', '../../addons/slot2_expMemory.cpp', '../../addons/slot2_piano.cpp', '../../addons/slot2_passme.cpp', '../../addons/slot1_none.cpp', '../../addons/slot1_r4.cpp', '../../addons/slot1_retail_nand.cpp', '../../addons/slot1_retail_auto.cpp', '../../addons/slot1_retail_mcrom.cpp', '../../addons/slot1_retail_mcrom_debug.cpp', '../../addons/slot1comp_mc.cpp', '../../addons/slot1comp_rom.cpp', '../../addons/slot1comp_protocol.cpp',
+  
+  # Remaining files
+  '../../FIFO.cpp',
+  '../../encrypt.cpp',
   '../../commandline.cpp',
-  '../../common.cpp',
-  '../../debug.cpp',
   '../../driver.cpp',
-  '../../Database.cpp',
-  '../../emufile.cpp', '../../encrypt.cpp', '../../FIFO.cpp',
-  '../../firmware.cpp', '../../GPU.cpp',
-  '../../mc.cpp',
-  '../../path.cpp',
-  '../../readwrite.cpp',
-  '../../wifi.cpp',
-  '../../MMU.cpp', '../../NDSSystem.cpp',
-  '../../ROMReader.cpp',
-  '../../render3D.cpp',
-  '../../rtc.cpp',
-  '../../saves.cpp',
-  '../../slot1.cpp',
-  '../../slot2.cpp',
-  '../../SPU.cpp',
-  '../../matrix.cpp',
-  '../../gfx3d.cpp',
-  '../../thumb_instructions.cpp',
-  '../../movie.cpp',
   '../../frontend/modules/Disassembler.cpp',
-  '../../utils/advanscene.cpp',
-  '../../utils/datetime.cpp',
-  '../../utils/guid.cpp',
-  '../../utils/emufat.cpp',
-  '../../utils/fsnitro.cpp',
-  '../../utils/xstring.cpp',
   '../../utils/decrypt/crc.cpp', '../../utils/decrypt/decrypt.cpp',
   '../../utils/decrypt/header.cpp',
-  '../../utils/task.cpp',
-  '../../utils/vfat.cpp',
-  '../../utils/dlditool.cpp',
   '../../utils/libfat/cache.cpp',
   '../../utils/libfat/directory.cpp',
   '../../utils/libfat/disc.cpp',
@@ -115,35 +180,16 @@ libdesmume_src += [
   '../../utils/tinyxml/tinyxml.cpp',
   '../../utils/tinyxml/tinyxmlerror.cpp',
   '../../utils/tinyxml/tinyxmlparser.cpp',
-  '../../utils/colorspacehandler/colorspacehandler.cpp',
-  '../../addons/slot2_auto.cpp', '../../addons/slot2_mpcf.cpp', '../../addons/slot2_paddle.cpp', '../../addons/slot2_gbagame.cpp', '../../addons/slot2_none.cpp', '../../addons/slot2_rumblepak.cpp', '../../addons/slot2_guitarGrip.cpp', '../../addons/slot2_hcv1000.cpp', '../../addons/slot2_expMemory.cpp', '../../addons/slot2_piano.cpp', '../../addons/slot2_passme.cpp', '../../addons/slot1_none.cpp', '../../addons/slot1_r4.cpp', '../../addons/slot1_retail_nand.cpp', '../../addons/slot1_retail_auto.cpp', '../../addons/slot1_retail_mcrom.cpp', '../../addons/slot1_retail_mcrom_debug.cpp', '../../addons/slot1comp_mc.cpp', '../../addons/slot1comp_rom.cpp', '../../addons/slot1comp_protocol.cpp',
-  '../../cheatSystem.cpp',
-  '../../texcache.cpp', '../../rasterize.cpp',
-  '../../metaspu/metaspu.cpp',
-  '../../filter/2xsai.cpp', '../../filter/bilinear.cpp', '../../filter/deposterize.cpp', '../../filter/epx.cpp',
-  '../../filter/hq2x.cpp',
-  '../../filter/hq3x.cpp',
-  '../../filter/hq4x.cpp',
-  '../../filter/lq2x.cpp', '../../filter/scanline.cpp',
-  '../../filter/videofilter.cpp',
-  '../../filter/xbrz.cpp',
-  '../../version.cpp',
   '../../libretro-common/compat/compat_getopt.c',
   '../../libretro-common/file/file_path.c',
   '../../libretro-common/compat/compat_strl.c',
   '../../libretro-common/features/features_cpu.c',
   '../../libretro-common/file/retro_dirent.c',
   '../../libretro-common/file/retro_stat.c',
-  '../../libretro-common/rthreads/async_job.c',
-  '../../libretro-common/rthreads/rsemaphore.c',
-  '../../libretro-common/rthreads/rthreads.c',
   '../../libretro-common/encodings/encoding_utf.c',
 ]
 
-libdesmume_src += [
-  '../posix/shared/sndsdl.cpp',
-  '../posix/shared/ctrlssdl.cpp'
-]
+# SDL files are already included in the main libdesmume_src list
 
 if have_jit
   libdesmume_src += [
@@ -184,11 +230,7 @@ if get_option('opengles')
   if dep_gles.found()
     add_global_arguments('-DENABLE_OPENGL_ES', language: ['c', 'cpp'])
     dependencies += dep_gles
-    libdesmume_src += [
-      '../../OGLRender.cpp',
-      '../../OGLRender_3_2.cpp',
-      '../../OGLRender_ES3.cpp',
-    ]
+    # OpenGL files are already included in the main libdesmume_src list
   else
     message('Cannot build with OpenGL ES -- library not found.')
   endif
@@ -196,10 +238,7 @@ elif get_option('opengl')
   if dep_gl.found()
     add_global_arguments('-DENABLE_OPENGL_STANDARD', language: ['c', 'cpp'])
     dependencies += dep_gl
-    libdesmume_src += [
-      '../../OGLRender.cpp',
-      '../../OGLRender_3_2.cpp',
-    ]
+    # OpenGL files are already included in the main libdesmume_src list
   else
     message('Cannot build with OpenGL -- library not found.')
   endif
@@ -216,36 +255,32 @@ elif dep_alsa.found()
     '../posix/shared/mic_alsa.cpp',
   ]
 else
-  libdesmume_src += [
-    '../../mic.cpp',
-  ]
+  # mic.cpp is already included in the main libdesmume_src list
 endif
 
 if dep_soundtouch.found()
   dependencies += dep_soundtouch
   add_global_arguments('-DHAVE_LIBSOUNDTOUCH', language: ['c', 'cpp'])
   libdesmume_src += [
-    '../../metaspu/SndOut.cpp',
-    '../../metaspu/Timestretcher.cpp',
+    '../../core/audio/metaspu/SndOut.cpp',
+    '../../core/audio/metaspu/Timestretcher.cpp',
   ]
 endif
 
 if get_option('gdb-stub')
   add_global_arguments('-DGDB_STUB', language: ['c', 'cpp'])
-  libdesmume_src += [
-    '../../gdbstub/gdbstub.cpp',
-  ]
+  # gdbstub files are already included in the main libdesmume_src list
 endif
 
 simd = import('unstable-simd')
 cxx = meson.get_compiler('cpp')
 rval = simd.check('colorspacehandler',
-  sse2: '../../utils/colorspacehandler/colorspacehandler_SSE2.cpp',
+  sse2: '../../utils/common/colorspacehandler/colorspacehandler_SSE2.cpp',
   # TODO: add these two even in generic builds.
-  #avx2: '../../utils/colorspacehandler/colorspacehandler_AVX2.cpp',
-  #avx512: '../../utils/colorspacehandler/colorspacehandler_AVX512.cpp',
+  #avx2: '../../utils/common/colorspacehandler/colorspacehandler_AVX2.cpp',
+  #avx512: '../../utils/common/colorspacehandler/colorspacehandler_AVX512.cpp',
   # TODO: add support for this in meson.
-  #altivec: '../../utils/colorspacehandler/colorspacehandler_AltiVec.cpp',
+  #altivec: '../../utils/common/colorspacehandler/colorspacehandler_AltiVec.cpp',
   compiler: cxx,
   include_directories: includes,
 )

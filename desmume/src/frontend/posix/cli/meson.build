@@ -4,8 +4,8 @@ cli_dependencies = dependencies + [dep_x11]
 
 cli_src = [
   'main.cpp',
-  '../shared/sndsdl.cpp',
-  '../shared/ctrlssdl.cpp',
+  '../../platform/sdl/audio/sndsdl.cpp',
+  '../../platform/sdl/input/ctrlssdl.cpp',
 ]
 
 # TODO: why do we have to redeclare it here with one more fs level?
