@@ -21,13 +21,13 @@
 #include <algorithm>
 #include <stdarg.h>
 #include <stdio.h>
-#include "MMU.h"
-#include "armcpu.h"
-#include "instructions.h"
-#include "cp15.h"
-#include "NDSSystem.h"
-#include "utils/xstring.h"
-#include "movie.h"
+#include "../../core/memory/MMU.h"
+#include "../../core/cpu/armcpu.h"
+#include "../../core/cpu/instructions.h"
+#include "../../core/cpu/cp15.h"
+#include "../../core/system/NDSSystem.h"
+#include "../common/xstring.h"
+#include "../movie/movie.h"
 
 #ifdef HAVE_LUA
 #include "lua-engine.h"

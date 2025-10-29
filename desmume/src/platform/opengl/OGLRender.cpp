@@ -26,16 +26,16 @@
 #include <string>
 #include <sstream>
 
-#include "common.h"
-#include "debug.h"
-#include "NDSSystem.h"
+#include "../../utils/common/common.h"
+#include "../../utils/debug/debug.h"
+#include "../../core/system/NDSSystem.h"
 
-#include "./filter/filter.h"
-#include "./filter/xbrz.h"
+#include "../../graphics/filters/filter.h"
+#include "../../graphics/filters/xbrz.h"
 
 #ifdef ENABLE_SSE2
 #include <emmintrin.h>
-#include "./utils/colorspacehandler/colorspacehandler_SSE2.h"
+#include "../../utils/common/colorspacehandler/colorspacehandler_SSE2.h"
 #endif
 
 typedef struct

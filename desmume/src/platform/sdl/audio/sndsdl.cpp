@@ -21,9 +21,9 @@
 
 #include <SDL.h>
 #include "types.h"
-#include "SPU.h"
+#include "../../../core/audio/SPU.h"
 #include "sndsdl.h"
-#include "debug.h"
+#include "../../../utils/debug/debug.h"
 
 #ifdef _XBOX
 #include <xtl.h>

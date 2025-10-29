@@ -33,20 +33,20 @@
 #define CLI_UI
 #endif
 
-#include "../NDSSystem.h"
-#include "../driver.h"
-#include "../GPU.h"
-#include "../SPU.h"
-#include "../shared/sndsdl.h"
-#include "../shared/ctrlssdl.h"
-#include "../render3D.h"
-#include "../rasterize.h"
-#include "../saves.h"
-#include "../frontend/modules/osd/agg/agg_osd.h"
+#include "../../../core/system/NDSSystem.h"
+#include "driver.h"
+#include "../../../core/graphics/GPU.h"
+#include "../../../core/audio/SPU.h"
+#include "../../../platform/sdl/audio/sndsdl.h"
+#include "../../../platform/sdl/input/ctrlssdl.h"
+#include "../../../core/graphics/render3D.h"
+#include "../../../core/graphics/rasterize.h"
+#include "../../../core/storage/saves.h"
+#include "../modules/osd/agg/agg_osd.h"
 #include "../shared/desmume_config.h"
 #include "../commandline.h"
-#include "../slot2.h"
-#include "../utils/xstring.h"
+#include "../../../core/io/slot2.h"
+#include "../../../utils/common/xstring.h"
 
 #ifdef GDB_STUB
 #include "../armcpu.h"

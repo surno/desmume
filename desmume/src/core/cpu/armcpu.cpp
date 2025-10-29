@@ -24,16 +24,16 @@
 #include "armcpu.h"
 #include "instructions.h"
 #include "cp15.h"
-#include "bios.h"
-#include "debug.h"
-#include "NDSSystem.h"
-#include "MMU_timing.h"
-#include "utils/bits.h"
+#include "../system/bios.h"
+#include "../../utils/debug/debug.h"
+#include "../system/NDSSystem.h"
+#include "../memory/MMU_timing.h"
+#include "../../utils/common/bits.h"
 #ifdef HAVE_LUA
-#include "lua-engine.h"
+#include "../../utils/debug/lua-engine.h"
 #endif
 #ifdef TARGET_INTERFACE
-#include "frontend/interface/interface.h"
+#include "../../frontend/api/interface/interface.h"
 #endif
 #ifdef HAVE_JIT
 #include "arm_jit.h"

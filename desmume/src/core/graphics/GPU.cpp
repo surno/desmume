@@ -26,18 +26,18 @@
 #include <algorithm>
 #include <iostream>
 
-#include "common.h"
-#include "MMU.h"
+#include "../../utils/common/common.h"
+#include "../memory/MMU.h"
 #include "FIFO.h"
-#include "debug.h"
+#include "../../utils/debug/debug.h"
 #include "render3D.h"
-#include "registers.h"
+#include "../system/registers.h"
 #include "gfx3d.h"
-#include "debug.h"
-#include "NDSSystem.h"
+#include "../../utils/debug/debug.h"
+#include "../system/NDSSystem.h"
 #include "matrix.h"
-#include "emufile.h"
-#include "utils/task.h"
+#include "../../utils/file/emufile.h"
+#include "../../utils/common/task.h"
 
 
 #ifdef FASTBUILD

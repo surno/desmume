@@ -31,17 +31,17 @@
 #include <queue>
 #include <vector>
 
-#include "debug.h"
+#include "../../utils/debug/debug.h"
 #include "driver.h"
-#include "MMU.h"
+#include "../memory/MMU.h"
 #include "SPU.h"
-#include "mem.h"
-#include "readwrite.h"
-#include "armcpu.h"
-#include "NDSSystem.h"
-#include "emufile.h"
-#include "matrix.h"
-#include "utils/bits.h"
+#include "../memory/mem.h"
+#include "../../utils/file/readwrite.h"
+#include "../cpu/armcpu.h"
+#include "../system/NDSSystem.h"
+#include "../../utils/file/emufile.h"
+#include "../graphics/matrix.h"
+#include "../../utils/common/bits.h"
 
 
 static inline s16 read16(u32 addr) { return (s16)_MMU_read16<ARMCPU_ARM7,MMU_AT_DEBUG>(addr); }
