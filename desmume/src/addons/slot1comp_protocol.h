@@ -24,7 +24,7 @@
 #define _SLOT1COMP_PROTOCOL_H
 
 #include "../types.h"
-#include "../MMU.h"
+#include "../core/memory/MMU.h"
 
 class EMUFILE;
 

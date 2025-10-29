@@ -17,8 +17,8 @@
 
 #include "slot1comp_rom.h"
 
-#include "../NDSSystem.h"
-#include "../emufile.h"
+#include "../core/system/NDSSystem.h"
+#include "../utils/file/emufile.h"
 
 
 void Slot1Comp_Rom::start(eSlot1Operation operation, u32 addr)

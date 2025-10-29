@@ -24,7 +24,7 @@
 #include "slot1comp_rom.h"
 #include "slot1comp_protocol.h"
 
-#include "../slot1.h"
+#include "../core/io/slot1.h"
 #include "../NDSSystem.h"
 #include "../emufile.h"
 

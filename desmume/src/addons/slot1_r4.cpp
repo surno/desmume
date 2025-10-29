@@ -19,9 +19,9 @@
 
 #include <time.h>
 
-#include "../slot1.h"
-#include "../NDSSystem.h"
-#include "../emufile.h"
+#include "../core/io/slot1.h"
+#include "../core/system/NDSSystem.h"
+#include "../utils/file/emufile.h"
 
 class Slot1_R4 : public ISlot1Interface, public ISlot1Comp_Protocol_Client
 {

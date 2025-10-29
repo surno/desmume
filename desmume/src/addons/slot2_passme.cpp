@@ -15,8 +15,8 @@
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../slot2.h"
-#include "../NDSSystem.h"
+#include "../core/io/slot2.h"
+#include "../core/system/NDSSystem.h"
 
 class Slot2_PassME : public ISlot2Interface
 {

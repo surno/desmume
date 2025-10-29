@@ -17,7 +17,7 @@
 
 #include <stdio.h>
 
-#include "../slot2.h"
+#include "../core/io/slot2.h"
 
 class Slot2_Auto : public ISlot2Interface
 {

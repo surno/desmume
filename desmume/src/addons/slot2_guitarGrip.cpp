@@ -16,7 +16,7 @@
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../slot2.h"
+#include "../core/io/slot2.h"
 static u8 guitarKeyStatus;
 
 class Slot2_GuitarGrip : public ISlot2Interface

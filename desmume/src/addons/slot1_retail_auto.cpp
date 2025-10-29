@@ -15,8 +15,8 @@
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../slot1.h"
-#include "../NDSSystem.h"
+#include "../core/io/slot1.h"
+#include "../core/system/NDSSystem.h"
 
 class Slot1_Retail_Auto : public ISlot1Interface
 {

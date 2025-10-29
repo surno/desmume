@@ -23,11 +23,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../slot2.h"
-#include "../debug.h"
-#include "../emufile.h"
-#include "../path.h"
-#include "../utils/vfat.h"
+#include "../core/io/slot2.h"
+#include "../utils/debug/debug.h"
+#include "../utils/file/emufile.h"
+#include "../utils/common/path.h"
+#include "../utils/common/vfat.h"
 
 // Set up addresses for GBAMP
 #define CF_REG_DATA 0x9000000

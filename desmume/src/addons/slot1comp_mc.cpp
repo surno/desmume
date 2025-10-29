@@ -20,8 +20,8 @@
 
 #include "slot1comp_mc.h"
 
-#include "../MMU.h"
-#include "../NDSSystem.h"
+#include "../core/memory/MMU.h"
+#include "../core/system/NDSSystem.h"
 
 Slot1Comp_MC g_Slot1Comp_MC;
 

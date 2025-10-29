@@ -19,7 +19,7 @@
 
 #include <string.h>
 
-#include "../slot2.h"
+#include "../core/io/slot2.h"
 
 u8 hcv1000_cnt;
 char hcv1000_data[16];

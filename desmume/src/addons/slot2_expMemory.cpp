@@ -16,9 +16,9 @@
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../slot2.h"
-#include "../emufile.h"
-#include "../mem.h"
+#include "../core/io/slot2.h"
+#include "../utils/file/emufile.h"
+#include "../core/memory/mem.h"
 
 #if 0
 #define EXPINFO(...) INFO(__VA_ARGS__)

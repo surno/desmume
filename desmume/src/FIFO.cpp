@@ -21,13 +21,13 @@
 
 #include <string.h>
 
-#include "armcpu.h"
-#include "debug.h"
-#include "mem.h"
-#include "MMU.h"
-#include "registers.h"
-#include "NDSSystem.h"
-#include "gfx3d.h"
+#include "core/cpu/armcpu.h"
+#include "utils/debug/debug.h"
+#include "core/memory/mem.h"
+#include "core/memory/MMU.h"
+#include "core/system/registers.h"
+#include "core/system/NDSSystem.h"
+#include "core/graphics/gfx3d.h"
 
 #if defined(ENABLE_AVX512_1)
 	#define USEVECTORSIZE_512

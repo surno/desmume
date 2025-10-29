@@ -15,7 +15,7 @@
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../slot1.h"
+#include "../core/io/slot1.h"
 
 class Slot1_None : public ISlot1Interface
 {

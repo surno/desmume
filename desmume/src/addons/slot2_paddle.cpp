@@ -39,8 +39,8 @@ maybe legally configure the paddle differently, which could be rejected here; in
 
 #include <string.h>
 
-#include "../slot2.h"
-#include "../NDSSystem.h"
+#include "../core/io/slot2.h"
+#include "../core/system/NDSSystem.h"
 
 class Slot2_Paddle : public ISlot2Interface
 {
