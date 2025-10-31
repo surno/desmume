@@ -73,7 +73,7 @@ EXPORTED int desmume_init()
     // TODO: Option to configure 3d
     GPU->Change3DRendererByID(RENDERID_SOFTRASTERIZER);
     // TODO: Without SDL init?
-    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
+    if(SDL_Init(SDL_INIT_TIMER) == -1) {
         fprintf(stderr, "Error trying to initialize SDL: %s\n",
                 SDL_GetError());
         return -1;
