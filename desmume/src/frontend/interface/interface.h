@@ -88,11 +88,13 @@ EXPORTED void desmume_draw_opengl(GLuint *texture);
 #endif
 EXPORTED BOOL desmume_has_opengl();
 // ... or via an SDL window created by Desmume.
+#ifdef INCLUDE_SDL
 EXPORTED int desmume_draw_window_init(BOOL auto_pause, BOOL use_opengl_if_possible);
 EXPORTED void desmume_draw_window_input();
 EXPORTED void desmume_draw_window_frame();
 EXPORTED BOOL desmume_draw_window_has_quit();
 EXPORTED void desmume_draw_window_free();
+#endif
 // ... or have fun working with the display buffer directly
 EXPORTED u16 *desmume_draw_raw();
 EXPORTED void desmume_draw_raw_as_rgbx(u8 *buffer);
@@ -144,13 +146,14 @@ EXPORTED void desmume_memory_register_exec(int address, int size, memory_cb_fnc 
 EXPORTED void desmume_screenshot(char *screenshot_buffer);
 
 // For automatic input processing with the SDL window, see desmume_draw_sdl_input.
+#ifdef INCLUDE_SDL
 EXPORTED BOOL desmume_input_joy_init(void);
 EXPORTED void desmume_input_joy_uninit(void);
 EXPORTED u16 desmume_input_joy_number_connected(void);
 EXPORTED u16 desmume_input_joy_get_key(int index);
 EXPORTED u16 desmume_input_joy_get_set_key(int index);
 EXPORTED void desmume_input_joy_set_key(int index, int joystick_key_index);
-
+#endif
 EXPORTED void desmume_input_keypad_update(u16 keys);
 EXPORTED u16 desmume_input_keypad_get(void);
 

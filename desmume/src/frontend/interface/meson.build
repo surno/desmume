@@ -11,7 +11,6 @@ project('desmume',
 )
 
 dep_glib2 = dependency('glib-2.0')
-dep_sdl = dependency('sdl2')
 dep_pcap = dependency('pcap')
 dep_zlib = dependency('zlib')
 dep_threads = dependency('threads')
@@ -33,7 +32,13 @@ endif
 
 add_global_arguments('-DTARGET_INTERFACE', language: ['c', 'cpp'])
 
-dependencies = [dep_glib2, dep_sdl, dep_pcap, dep_zlib, dep_threads]
+if get_option('sdl')
+  dep_sdl = dependency('sdl2')
+else
+  dep_sdl = disabler()
+endif
+
+dependencies = [dep_glib2, dep_pcap, dep_zlib, dep_threads]
 
 if target_machine.cpu() == 'x86_64'
   add_global_arguments('-DHAVE_JIT', language: ['c', 'cpp'])
@@ -58,7 +63,12 @@ includes = include_directories(
   '../../../src/frontend',
 )
 
-libdesmume_src = ['interface.cpp', 'draw_sdl_window.cpp']
+libdesmume_src = ['interface.cpp']
+
+if get_option('sdl')
+  add_global_arguments('-DINCLUDE_SDL', language: ['c', 'cpp'])
+  libdesmume_src += ['draw_sdl_window.cpp']
+endif
 
 libdesmume_src += [
   '../../armcpu.cpp',
@@ -140,10 +150,13 @@ libdesmume_src += [
   '../../libretro-common/encodings/encoding_utf.c',
 ]
 
-libdesmume_src += [
-  '../posix/shared/sndsdl.cpp',
-  '../posix/shared/ctrlssdl.cpp'
-]
+if get_option('sdl')
+  dependencies += dep_sdl
+  libdesmume_src += [
+    '../posix/shared/sndsdl.cpp',
+    '../posix/shared/ctrlssdl.cpp'
+  ]
+endif
 
 if have_jit
   libdesmume_src += [

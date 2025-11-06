@@ -33,3 +33,8 @@ option('gdb-stub',
   value: false,
   description: 'Enable gdb stub',
 )
+option('sdl',
+  type: 'boolean',
+  value: true,
+  description: 'Enable SDL2 support for window rendering and input',
+)

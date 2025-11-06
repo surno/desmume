@@ -16,8 +16,9 @@
 	You should have received a copy of the GNU General Public License
 	along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+#ifdef INCLUDE_SDL
 #include <SDL.h>
+#endif
 #include "interface.h"
 
 #include <stdio.h>
@@ -31,8 +32,10 @@
 #include "../../mc.h"
 #include "../../firmware.h"
 #include "../../armcpu.h"
+#ifdef INCLUDE_SDL
 #include "../posix/shared/sndsdl.h"
 #include "../posix/shared/ctrlssdl.h"
+#endif
 #include <locale>
 #include <codecvt>
 #include <string>
@@ -42,14 +45,15 @@ volatile bool execute = false;
 TieredRegion hooked_regions [HOOK_COUNT];
 std::map<unsigned int, memory_cb_fnc> hooks[HOOK_COUNT];
 
-
 SoundInterface_struct *SNDCoreList[] = {
         &SNDDummy,
-        &SNDDummy,
+#ifdef INCLUDE_SDL
         &SNDSDL,
+#else
+        &SNDDummy,
+#endif
         NULL
 };
-
 GPU3DInterface *core3DList[] = {
         &gpu3DNull,
         &gpu3DRasterize,
@@ -66,18 +70,22 @@ EXPORTED int desmume_init()
 {
     NDS_Init();
     // TODO: Option to disable audio
+#ifdef INCLUDE_SDL
     SPU_ChangeSoundCore(SNDCORE_SDL, 735 * 4);
     SPU_SetSynchMode(0, 0);
     SPU_SetVolume(100);
     SNDSDLSetAudioVolume(100);
+#endif
     // TODO: Option to configure 3d
     GPU->Change3DRendererByID(RENDERID_SOFTRASTERIZER);
     // TODO: Without SDL init?
-    if(SDL_Init(SDL_INIT_TIMER) == -1) {
+#ifdef INCLUDE_SDL
+    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
         fprintf(stderr, "Error trying to initialize SDL: %s\n",
                 SDL_GetError());
         return -1;
     }
+#endif
     execute = false;
     return 0;
 }
@@ -86,7 +94,9 @@ EXPORTED void desmume_free()
 {
     execute = false;
     NDS_DeInit();
+#ifdef INCLUDE_SDL
     SDL_Quit();
+#endif
 }
 
 EXPORTED void desmume_set_language(u8 lang)
@@ -137,6 +147,7 @@ EXPORTED void desmume_skip_next_frame()
 
 EXPORTED void desmume_cycle(BOOL with_joystick)
 {
+#ifdef INCLUDE_SDL
     u16 keypad;
     /* Joystick events */
     if (with_joystick) {
@@ -147,7 +158,7 @@ EXPORTED void desmume_cycle(BOOL with_joystick)
         /* Update keypad value */
         update_keypad(keypad);
     }
-
+#endif
     NDS_beginProcessingInput();
     {
         FCEUMOV_AddInputState();
@@ -160,7 +171,11 @@ EXPORTED void desmume_cycle(BOOL with_joystick)
 
 EXPORTED int desmume_sdl_get_ticks()
 {
+#ifdef INCLUDE_SDL
     return SDL_GetTicks();
+#else
+    return 0;
+#endif
 }
 
 #ifdef INCLUDE_OPENGL_2D
@@ -309,11 +324,17 @@ EXPORTED void desmume_gpu_set_layer_sub_enable_state(int layer_index, BOOL the_s
 
 EXPORTED int desmume_volume_get()
 {
+#ifdef INCLUDE_SDL
     return SNDSDLGetAudioVolume();
+#else
+    return 0;
+#endif
 }
 EXPORTED void desmume_volume_set(int volume)
 {
+#ifdef INCLUDE_SDL
     SNDSDLSetAudioVolume(volume);
+#endif
 }
 
 EXPORTED unsigned char desmume_memory_read_byte(int address)
@@ -534,6 +555,7 @@ EXPORTED void desmume_screenshot(char *screenshot_buffer)
 
 }
 
+#ifdef INCLUDE_SDL
 EXPORTED BOOL desmume_input_joy_init(void)
 {
     return (BOOL) init_joy();
@@ -573,6 +595,7 @@ EXPORTED u16 desmume_input_keypad_get(void)
 {
     return get_keypad();
 }
+#endif
 
 EXPORTED void desmume_input_set_touch_pos(u16 x, u16 y)
 {
