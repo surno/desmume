@@ -2339,31 +2339,31 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 		{
 			const uint32x4x4_t src32 = vld1q_u32_x4((u32 *)srcColorNative32);
 			
-			pixelop_vec.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ, WILLPERFORMWINDOWTEST>(compInfo,
-			                                                                                               didAllPixelsPass,
-			                                                                                               passMask8, evy16,
-			                                                                                               srcLayerID,
-			                                                                                               src32.val[3], src32.val[2], src32.val[1], src32.val[0],
-			                                                                                               srcEffectEnableMask,
-			                                                                                               dstBlendEnableMaskLUT,
-			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+		pixelop_vec.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ, WILLPERFORMWINDOWTEST>(compInfo,
+		                                                                                               didAllPixelsPass,
+		                                                                                               passMask8, evy16,
+		                                                                                               srcLayerID,
+		                                                                                               src32.val[3], src32.val[2], src32.val[1], src32.val[0],
+		                                                                                               srcEffectEnableMask,
+		                                                                                               dstBlendEnableMaskLUT,
+		                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
+		                                                                                               this->_sprAlpha + i,
+		                                                                                               this->_sprType + i);
 		}
 		else
 		{
 			const uint16x8x2_t src16 = vld1q_u16_x2(srcColorNative16);
 			
-			pixelop_vec.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ, WILLPERFORMWINDOWTEST>(compInfo,
-			                                                                                               didAllPixelsPass,
-			                                                                                               passMask8, evy16,
-			                                                                                               srcLayerID,
-			                                                                                               src16.val[1], src16.val[0],
-			                                                                                               srcEffectEnableMask,
-			                                                                                               dstBlendEnableMaskLUT,
-			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+		pixelop_vec.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ, WILLPERFORMWINDOWTEST>(compInfo,
+		                                                                                               didAllPixelsPass,
+		                                                                                               passMask8, evy16,
+		                                                                                               srcLayerID,
+		                                                                                               src16.val[1], src16.val[0],
+		                                                                                               srcEffectEnableMask,
+		                                                                                               dstBlendEnableMaskLUT,
+		                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
+		                                                                                               this->_sprAlpha + i,
+		                                                                                               this->_sprType + i);
 		}
 	}
 }

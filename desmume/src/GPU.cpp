@@ -792,12 +792,7 @@ void GPUEngineBase::_RenderLine_Clear(GPUEngineCompositorInfo &compInfo)
 void GPUEngineBase::SetupBuffers()
 {
 	memset(this->_renderLineLayerIDNative, GPULayerID_Backdrop, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
-	
-	memset(this->_sprAlpha, 0, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
-	memset(this->_sprType, OBJMode_Normal, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
-	memset(this->_sprPrio, 0x7F, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
-	memset(this->_sprWin, 0, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
-	
+
 	if (this->_targetDisplay->IsCustomSizeRequested())
 	{
 		if (this->_renderLineLayerIDCustom != NULL)
@@ -1318,7 +1313,7 @@ void GPUEngineBase::_CompositeNativeLineOBJ(GPUEngineCompositorInfo &compInfo, c
 			}
 			
 			const bool enableColorEffect = (WILLPERFORMWINDOWTEST) ? (this->_enableColorEffectNative[GPULayerID_OBJ][i] != 0) : true;
-			pixelop.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, *srcColorNative32, enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][i], this->_sprType[compInfo.line.indexNative][i]);
+			pixelop.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, *srcColorNative32, enableColorEffect, this->_sprAlpha[i], this->_sprType[i]);
 		}
 	}
 	else
@@ -1331,7 +1326,7 @@ void GPUEngineBase::_CompositeNativeLineOBJ(GPUEngineCompositorInfo &compInfo, c
 			}
 			
 			const bool enableColorEffect = (WILLPERFORMWINDOWTEST) ? (this->_enableColorEffectNative[GPULayerID_OBJ][i] != 0) : true;
-			pixelop.Composite16<COMPOSITORMODE, NDSColorFormat_BGR555_Rev, GPULayerType_OBJ>(compInfo, *srcColorNative16, enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][i], this->_sprType[compInfo.line.indexNative][i]);
+			pixelop.Composite16<COMPOSITORMODE, NDSColorFormat_BGR555_Rev, GPULayerType_OBJ>(compInfo, *srcColorNative16, enableColorEffect, this->_sprAlpha[i], this->_sprType[i]);
 		}
 	}
 #endif
@@ -1787,7 +1782,7 @@ FORCEINLINE void GPUEngineBase::_RenderSpriteUpdatePixel(GPUEngineCompositorInfo
 	
 	if ( !ISOBJMODEBITMAP && (objMode == OBJMode_Window) )
 	{
-		this->_sprWin[compInfo.line.indexNative][frameX] = 1;
+		this->_sprWin[frameX] = 1;
 		return;
 	}
 	
@@ -1953,7 +1948,7 @@ void GPUEngineBase::_SpriteRender(GPUEngineCompositorInfo &compInfo, u16 *__rest
 
 void GPUEngineBase::SpritePrepareRenderDebug(u16 *dst)
 {
-	memset(this->_sprPrio, 0x7F, GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+	memset(this->_sprPrio, 0x7F, GPU_FRAMEBUFFER_NATIVE_WIDTH * sizeof(u8));
 }
 
 void GPUEngineBase::SpriteRenderDebug(const u16 lineIndex, u16 *dst)
@@ -1993,7 +1988,7 @@ void GPUEngineBase::SpriteRenderDebug(const u16 lineIndex, u16 *dst)
 	compInfo.target.lineColor32 = (Color4u8 *)compInfo.target.lineColorHeadNative;
 	compInfo.target.lineLayerID = NULL;
 	
-	this->_SpriteRender<true>(compInfo, dst, NULL, NULL, &this->_sprPrio[lineIndex][0]);
+	this->_SpriteRender<true>(compInfo, dst, NULL, NULL, &this->_sprPrio[0]);
 }
 
 template <SpriteRenderMode MODE, bool ISDEBUGRENDER>
@@ -2417,16 +2412,22 @@ void GPUEngineBase::_RenderLine_SetupSprites(GPUEngineCompositorInfo &compInfo)
 	//n.b. - this is clearing the sprite line buffer to the background color,
 	memset_u16_fast<GPU_FRAMEBUFFER_NATIVE_WIDTH>(this->_sprColor, compInfo.renderState.backdropColor16);
 	
+	// Clear sprite attribute buffers for this scanline
+	memset(this->_sprAlpha, 0, GPU_FRAMEBUFFER_NATIVE_WIDTH * sizeof(u8));
+	memset(this->_sprType, OBJMode_Normal, GPU_FRAMEBUFFER_NATIVE_WIDTH * sizeof(u8));
+	memset(this->_sprPrio, 0x7F, GPU_FRAMEBUFFER_NATIVE_WIDTH * sizeof(u8));
+	memset(this->_sprWin, 0, GPU_FRAMEBUFFER_NATIVE_WIDTH * sizeof(u8));
+	
 	//zero 06-may-09: I properly supported window color effects for backdrop, but I am not sure
 	//how it interacts with this. I wish we knew why we needed this
 	
-	this->_SpriteRender<false>(compInfo, this->_sprColor, this->_sprAlpha[compInfo.line.indexNative], this->_sprType[compInfo.line.indexNative], this->_sprPrio[compInfo.line.indexNative]);
-	this->_MosaicSpriteLine(compInfo, this->_sprColor, this->_sprAlpha[compInfo.line.indexNative], this->_sprType[compInfo.line.indexNative], this->_sprPrio[compInfo.line.indexNative]);
+	this->_SpriteRender<false>(compInfo, this->_sprColor, this->_sprAlpha, this->_sprType, this->_sprPrio);
+	this->_MosaicSpriteLine(compInfo, this->_sprColor, this->_sprAlpha, this->_sprType, this->_sprPrio);
 	
 	for (size_t i = 0; i < GPU_FRAMEBUFFER_NATIVE_WIDTH; i++)
 	{
 		// assign them to the good priority item
-		const size_t prio = this->_sprPrio[compInfo.line.indexNative][i];
+		const size_t prio = this->_sprPrio[i];
 		if (prio >= 4) continue;
 		
 		item = &(this->_itemsForPriority[prio]);
@@ -2452,8 +2453,8 @@ void GPUEngineBase::_RenderLine_SetupSprites(GPUEngineCompositorInfo &compInfo)
 		if (isLineComplete)
 		{
 			this->_needExpandSprColorCustom = true;
-			CopyLineExpandHinted<0x3FFF, false, false, false, 1>(compInfo.line, this->_sprAlpha[compInfo.line.indexNative], this->_sprAlphaCustom);
-			CopyLineExpandHinted<0x3FFF, false, false, false, 1>(compInfo.line, this->_sprType[compInfo.line.indexNative], this->_sprTypeCustom);
+		CopyLineExpandHinted<0x3FFF, false, false, false, 1>(compInfo.line, this->_sprAlpha, this->_sprAlphaCustom);
+		CopyLineExpandHinted<0x3FFF, false, false, false, 1>(compInfo.line, this->_sprType, this->_sprTypeCustom);
 		}
 	}
 }
@@ -2529,7 +2530,7 @@ void GPUEngineBase::_RenderLine_LayerOBJ(GPUEngineCompositorInfo &compInfo, item
 				compInfo.target.lineLayerID = compInfo.target.lineLayerIDHead + srcX;
 				
 				const bool enableColorEffect = (WILLPERFORMWINDOWTEST) ? (this->_enableColorEffectNative[GPULayerID_OBJ][compInfo.target.xNative] != 0) : true;
-				pixelop.Composite16<COMPOSITORMODE, NDSColorFormat_BGR555_Rev, GPULayerType_OBJ>(compInfo, this->_sprColor[srcX], enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][srcX], this->_sprType[compInfo.line.indexNative][srcX]);
+				pixelop.Composite16<COMPOSITORMODE, NDSColorFormat_BGR555_Rev, GPULayerType_OBJ>(compInfo, this->_sprColor[srcX], enableColorEffect, this->_sprAlpha[srcX], this->_sprType[srcX]);
 			}
 		}
 		else
@@ -2571,11 +2572,11 @@ void GPUEngineBase::_RenderLine_LayerOBJ(GPUEngineCompositorInfo &compInfo, item
 							
 							if (OUTPUTFORMAT == NDSColorFormat_BGR888_Rev)
 							{
-								pixelop.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, ((Color4u8 *)vramColorPtr)[dstX], enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][srcX], this->_sprType[compInfo.line.indexNative][srcX]);
-							}
-							else
-							{
-								pixelop.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, ((u16 *)vramColorPtr)[dstX], enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][srcX], this->_sprType[compInfo.line.indexNative][srcX]);
+						pixelop.Composite32<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, ((Color4u8 *)vramColorPtr)[dstX], enableColorEffect, this->_sprAlpha[srcX], this->_sprType[srcX]);
+					}
+					else
+					{
+						pixelop.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, ((u16 *)vramColorPtr)[dstX], enableColorEffect, this->_sprAlpha[srcX], this->_sprType[srcX]);
 							}
 						}
 					}
@@ -2614,7 +2615,7 @@ void GPUEngineBase::_RenderLine_LayerOBJ(GPUEngineCompositorInfo &compInfo, item
 							compInfo.target.lineLayerID = dstLayerIDPtr + dstX;
 							
 							const bool enableColorEffect = (WILLPERFORMWINDOWTEST) ? (this->_enableColorEffectNative[GPULayerID_OBJ][compInfo.target.xNative] != 0) : true;
-							pixelop.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, this->_sprColor[srcX], enableColorEffect, this->_sprAlpha[compInfo.line.indexNative][srcX], this->_sprType[compInfo.line.indexNative][srcX]);
+							pixelop.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ>(compInfo, this->_sprColor[srcX], enableColorEffect, this->_sprAlpha[srcX], this->_sprType[srcX]);
 						}
 					}
 					
@@ -2773,7 +2774,7 @@ void GPUEngineBase::_PerformWindowTesting(GPUEngineCompositorInfo &compInfo)
 	
 	const u8 *__restrict win0Ptr   = (compInfo.renderState.windowState.IsWithinVerticalRange_WIN0) ? this->_h_win[0] : NULL;
 	const u8 *__restrict win1Ptr   = (compInfo.renderState.windowState.IsWithinVerticalRange_WIN1) ? this->_h_win[1] : NULL;
-	const u8 *__restrict winObjPtr = (compInfo.renderState.windowState.WINOBJ_ENABLED) ? this->_sprWin[compInfo.line.indexNative] : NULL;
+	const u8 *__restrict winObjPtr = (compInfo.renderState.windowState.WINOBJ_ENABLED) ? this->_sprWin : NULL;
 	
 	for (size_t layerID = GPULayerID_BG0; layerID <= GPULayerID_OBJ; layerID++)
 	{
