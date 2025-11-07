@@ -57,6 +57,11 @@ public:
 	
 	FORCEINLINE Color5551 decrease(const Color5551 col, const u16 blendEVY) const;
 	template<NDSColorFormat COLORFORMAT> FORCEINLINE Color4u8 decrease(const Color4u8 col, const u16 blendEVY) const;
+
+	// Brightness up functions, used for brightness up operations
+	// These are used to convert the 5 bit color components to 8 bit color components and add the intensity
+	FORCEINLINE Color4u8 brightness_up_888(const Color5551 color, const u8 intensity) const;
+	FORCEINLINE Color4u8 brightness_up_666(const Color5551 color, const u8 intensity) const;
 };
 
 class PixelOperation
@@ -80,11 +85,7 @@ protected:
 public:
 	static CACHE_ALIGN u8 BlendTable555[17][17][32][32];
 	static CACHE_ALIGN Color5551 BrightnessUpTable555[17][0x8000];
-	static CACHE_ALIGN Color4u8 BrightnessUpTable666[17][0x8000];
-	static CACHE_ALIGN Color4u8 BrightnessUpTable888[17][0x8000];
 	static CACHE_ALIGN Color5551 BrightnessDownTable555[17][0x8000];
-	static CACHE_ALIGN Color4u8 BrightnessDownTable666[17][0x8000];
-	static CACHE_ALIGN Color4u8 BrightnessDownTable888[17][0x8000];
 	static void InitLUTs();
 	
 	PixelOperation() {};

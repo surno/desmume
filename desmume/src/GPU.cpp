@@ -402,11 +402,7 @@ void GPUEngineBase::Reset()
 	renderState.masterBrightnessIsMaxOrMin = true;
 	renderState.blendTable555 = (TBlendTable *)&PixelOperation::BlendTable555[renderState.blendEVA][renderState.blendEVB][0][0];
 	renderState.brightnessUpTable555 = &PixelOperation::BrightnessUpTable555[renderState.blendEVY][0];
-	renderState.brightnessUpTable666 = &PixelOperation::BrightnessUpTable666[renderState.blendEVY][0];
-	renderState.brightnessUpTable888 = &PixelOperation::BrightnessUpTable888[renderState.blendEVY][0];
 	renderState.brightnessDownTable555 = &PixelOperation::BrightnessDownTable555[renderState.blendEVY][0];
-	renderState.brightnessDownTable666 = &PixelOperation::BrightnessDownTable666[renderState.blendEVY][0];
-	renderState.brightnessDownTable888 = &PixelOperation::BrightnessDownTable888[renderState.blendEVY][0];
 	
 	memset(&renderState.WIN0_enable[0], 0, sizeof(renderState.WIN0_enable[0]) * 6);
 	memset(&renderState.WIN1_enable[0], 0, sizeof(renderState.WIN1_enable[0]) * 6);
@@ -3093,11 +3089,7 @@ void GPUEngineBase::ParseReg_BLDY()
 	
 	renderState.blendEVY = (BLDY.EVY >= 16) ? 16 : BLDY.EVY;
 	renderState.brightnessUpTable555 = &PixelOperation::BrightnessUpTable555[renderState.blendEVY][0];
-	renderState.brightnessUpTable666 = &PixelOperation::BrightnessUpTable666[renderState.blendEVY][0];
-	renderState.brightnessUpTable888 = &PixelOperation::BrightnessUpTable888[renderState.blendEVY][0];
 	renderState.brightnessDownTable555 = &PixelOperation::BrightnessDownTable555[renderState.blendEVY][0];
-	renderState.brightnessDownTable666 = &PixelOperation::BrightnessDownTable666[renderState.blendEVY][0];
-	renderState.brightnessDownTable888 = &PixelOperation::BrightnessDownTable888[renderState.blendEVY][0];
 }
 
 const BGLayerInfo& GPUEngineBase::GetBGLayerInfoByID(const GPULayerID layerID)

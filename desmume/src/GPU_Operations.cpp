@@ -32,11 +32,7 @@ static CACHE_ALIGN u32 _gpuDstPitchIndex[GPU_FRAMEBUFFER_NATIVE_WIDTH];	// Key: 
 
 u8 PixelOperation::BlendTable555[17][17][32][32];
 Color5551 PixelOperation::BrightnessUpTable555[17][0x8000];
-Color4u8 PixelOperation::BrightnessUpTable666[17][0x8000];
-Color4u8 PixelOperation::BrightnessUpTable888[17][0x8000];
 Color5551 PixelOperation::BrightnessDownTable555[17][0x8000];
-Color4u8 PixelOperation::BrightnessDownTable666[17][0x8000];
-Color4u8 PixelOperation::BrightnessDownTable888[17][0x8000];
 
 static CACHE_ALIGN ColorOperation colorop;
 static CACHE_ALIGN PixelOperation pixelop;
@@ -225,8 +221,6 @@ void PixelOperation::InitLUTs()
 			cur.b = ( cur.b + ((31 - cur.b) * i / 16) );
 			cur.a = 0;
 			PixelOperation::BrightnessUpTable555[i][j]       = cur;
-			PixelOperation::BrightnessUpTable666[i][j].value = COLOR555TO666(cur.value);
-			PixelOperation::BrightnessUpTable888[i][j].value = COLOR555TO888(cur.value);
 			
 			cur.value = j;
 			cur.r = ( cur.r - (cur.r * i / 16) );
@@ -234,8 +228,6 @@ void PixelOperation::InitLUTs()
 			cur.b = ( cur.b - (cur.b * i / 16) );
 			cur.a = 0;
 			PixelOperation::BrightnessDownTable555[i][j]       = cur;
-			PixelOperation::BrightnessDownTable666[i][j].value = COLOR555TO666(cur.value);
-			PixelOperation::BrightnessDownTable888[i][j].value = COLOR555TO888(cur.value);
 		}
 	}
 	
@@ -336,13 +328,11 @@ FORCEINLINE void PixelOperation::_brightnessUp16(GPUEngineCompositorInfo &compIn
 			break;
 			
 		case NDSColorFormat_BGR666_Rev:
-			dstColor32 = compInfo.renderState.brightnessUpTable666[srcColor16.value & 0x7FFF];
-			dstColor32.a = 0x1F;
+			dstColor32 = colorop.brightness_up_666(srcColor16, compInfo.renderState.blendEVY);
 			break;
 			
 		case NDSColorFormat_BGR888_Rev:
-			dstColor32 = compInfo.renderState.brightnessUpTable888[srcColor16.value & 0x7FFF];
-			dstColor32.a = 0xFF;
+			dstColor32 = colorop.brightness_up_888(srcColor16, compInfo.renderState.blendEVY);
 			break;
 	}
 	
@@ -1304,3 +1294,31 @@ void CopyLineReduceHinted(const GPUEngineLineInfo &lineInfo, const void *__restr
 // These functions are used in gfx3d.cpp
 template void CopyLineExpandHinted<0x3FFF, true, false, false, 4>(const GPUEngineLineInfo &lineInfo, const void *__restrict srcBuffer, void *__restrict dstBuffer);
 template void CopyLineReduceHinted<0x3FFF, false, false, 4>(const GPUEngineLineInfo &lineInfo, const void *__restrict srcBuffer, void *__restrict dstBuffer);
+
+FORCEINLINE Color4u8 ColorOperation::brightness_up_888(const Color5551 color, const u8 intensity) const {
+	// extract the 5 bits of each color component, scale to 8 bits, and add the intensity
+	u8 r = (color.r << 3) | (color.r >> 2);
+	u8 g = (color.g << 3) | (color.g >> 2);
+	u8 b = (color.b << 3) | (color.b >> 2);
+
+	Color4u8 result;
+	result.r = r + (((255 - r) * intensity) >> 4);
+	result.g = g + (((255 - g) * intensity) >> 4);
+	result.b = b + (((255 - b) * intensity) >> 4);
+	result.a = 0;
+	return result;
+}
+
+FORCEINLINE Color4u8 ColorOperation::brightness_up_666(const Color5551 color, const u8 intensity) const {
+	// extract the 5 bits of each color component, scale to 6 bits for 666 format
+	u8 r = material_5bit_to_6bit[color.r];
+	u8 g = material_5bit_to_6bit[color.g];
+	u8 b = material_5bit_to_6bit[color.b];
+
+	Color4u8 result;
+	result.r = r + (((63 - r) * intensity) >> 4);
+	result.g = g + (((63 - g) * intensity) >> 4);
+	result.b = b + (((63 - b) * intensity) >> 4);
+	result.a = 0;
+	return result;
+}
