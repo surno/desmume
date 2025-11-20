@@ -57,6 +57,7 @@ DerivedData/
 !default.perspectivev3
 xcuserdata/
 .vs/ProjectSettings.json
+.vscode/
 
 ## Other
 *.moved-aside
