@@ -2,6 +2,7 @@
 #include <cstddef>
 
 #include "MetalRender.h"
+#include "common.h"
 #include "render3D.h"
 #include "types.h"
 
@@ -42,6 +43,16 @@
 //   * float texCoord[2] - S, T
 //   * u8 color[4] - R, G, B, A
 
+// Metal vertex structure that matches the vertex descriptor.
+// NDSVertex uses s32 fixed-point values for position and texCoord,
+// but Metal expects float values. This structure is used for the
+// converted vertex data uploaded to the Metal vertex buffer.
+struct MetalVertex {
+  float position[4]; // X, Y, Z, W in clip space (converted from s32 / 4096.0)
+  float texCoord[2]; // S, T texture coords (converted from s32 / 16.0)
+  u8 color[4];       // R, G, B, A (0-255, copied as-is)
+};
+
 MetalRender::MetalRender()
     : _device(nil), _commandQueue(nil), _commandBuffer(nil),
       _pipelineState(nil), _renderCommandEncoder(nil),
@@ -51,9 +62,9 @@ MetalRender::MetalRender()
       _depthStencilStateShadowPass1(nil), _depthStencilStateShadowPass2(nil),
       _vertexBuffer(nil), _indexBuffer(nil), _colorTexture(nil),
       _depthTexture(nil), _renderPassDescriptor(nil),
-      _enableAlphaBlending(false), _samplerStateClampNearest(nil),
-      _samplerStateClampLinear(nil), _samplerStateRepeatNearest(nil),
-      _samplerStateRepeatLinear(nil) {
+      _enableAlphaBlending(false), _metalColorOut(nullptr),
+      _samplerStateClampNearest(nil), _samplerStateClampLinear(nil),
+      _samplerStateRepeatNearest(nil), _samplerStateRepeatLinear(nil) {
   // Initialize device info
   _deviceInfo.renderID = RENDERID_METAL;
   _deviceInfo.renderName = "Metal";
@@ -80,6 +91,24 @@ MetalRender::MetalRender()
   if (InitializeSamplerState() != RENDER3DERROR_NOERR) {
     throw std::runtime_error("Failed to initialize sampler state");
   }
+
+  // Initialize render targets with default NDS framebuffer size
+  // This MUST be done before any rendering operations to prevent nil descriptor
+  // crashes
+  if (InitializeRenderTargets(GPU_FRAMEBUFFER_NATIVE_WIDTH,
+                              GPU_FRAMEBUFFER_NATIVE_HEIGHT) !=
+      RENDER3DERROR_NOERR) {
+    throw std::runtime_error("Failed to initialize render targets");
+  }
+
+  // Initialize the color output object
+  _metalColorOut = new MetalRenderColorOut(
+      _device, GPU_FRAMEBUFFER_NATIVE_WIDTH, GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+  _metalColorOut->SetRenderer(this);
+  _colorOut = _metalColorOut;
+
+  // Connect the color texture to the color output for framebuffer readback
+  _metalColorOut->SetColorTexture(_colorTexture);
 }
 
 MetalRender::~MetalRender() {
@@ -104,6 +133,13 @@ MetalRender::~MetalRender() {
   _samplerStateClampLinear = nil;
   _samplerStateRepeatNearest = nil;
   _samplerStateRepeatLinear = nil;
+
+  // Clean up the color output object
+  if (_metalColorOut != nullptr) {
+    delete _metalColorOut;
+    _metalColorOut = nullptr;
+    _colorOut = nullptr;
+  }
 }
 
 Render3DError
@@ -119,11 +155,30 @@ Render3DError MetalRender::RenderFinish() { return RENDER3DERROR_NOERR; }
 
 Render3DError MetalRender::RenderFlush(bool willFlushBuffer32,
                                        bool willFlushBuffer16) {
-  return RENDER3DERROR_NOERR;
+  // Call the base class to flush the color output, this will call the
+  // _metalColorOut->BindRead32() and _metalColorOut->BindRead16() if the
+  // willFlushBuffer32 or willFlushBuffer16 is true
+  return this->Render3D::RenderFlush(willFlushBuffer32, willFlushBuffer16);
 }
 
 Render3DError MetalRender::SetFramebufferSize(size_t w, size_t h) {
-  return InitializeRenderTargets(w, h);
+  // Update render targets by recreating the _colorTexture
+  Render3DError error = InitializeRenderTargets(w, h);
+  if (error != RENDER3DERROR_NOERR) {
+    return error;
+  }
+
+  // Update the colorout buffer size
+  if (_metalColorOut != nullptr) {
+    error = _metalColorOut->SetSize(w, h);
+    if (error != RENDER3DERROR_NOERR) {
+      return error;
+    }
+
+    _metalColorOut->SetColorTexture(_colorTexture);
+  }
+
+  return RENDER3DERROR_NOERR;
 }
 
 NDSColorFormat MetalRender::RequestColorFormat(NDSColorFormat colorFormat) {
@@ -139,24 +194,6 @@ Render3DError MetalRender::FillColor32(const Color4u8 *__restrict src,
 
 ClipperMode MetalRender::GetPreferredPolygonClippingMode() const {
   return ClipperMode::ClipperMode_Full;
-}
-
-void MetalRender::_ClearImageBaseLoop(const u16 *__restrict inColor16,
-                                      const u16 *__restrict inDepth16,
-                                      u16 *__restrict outColor16,
-                                      u32 *__restrict outDepth24,
-                                      u8 *__restrict outFog) {
-  return;
-}
-
-template <bool ISCOLORBLANK, bool ISDEPTHBLANK>
-void MetalRender::_ClearImageScrolledLoop(const u8 xScroll, const u8 yScroll,
-                                          const u16 *__restrict inColor16,
-                                          const u16 *__restrict inDepth16,
-                                          u16 *__restrict outColor16,
-                                          u32 *__restrict outDepth24,
-                                          u8 *__restrict outFog) {
-  return;
 }
 
 Render3DError MetalRender::InitializePipelineState() {
@@ -201,7 +238,8 @@ Render3DError MetalRender::InitializePipelineState() {
   vertexDescriptor.attributes[2].bufferIndex = 0;
 
   // Layout the vertex data
-  vertexDescriptor.layouts[0].stride = sizeof(NDSVertex);
+  // Use MetalVertex stride, not NDSVertex, because we convert the data
+  vertexDescriptor.layouts[0].stride = sizeof(MetalVertex);
   vertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
   vertexDescriptor.layouts[0].stepRate = 1;
 
@@ -403,8 +441,9 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     return RENDER3DERROR_NOERR;
   }
 
-  // Calculate the buffer size, need space for all vertices
-  size_t vertexBufferSize = renderGList.rawVertCount * sizeof(NDSVertex);
+  // Calculate the buffer size, need space for all converted vertices
+  // Note: We use MetalVertex (with converted floats), not NDSVertex (with s32)
+  size_t vertexBufferSize = renderGList.rawVertCount * sizeof(MetalVertex);
 
   // Need space for index buffer, quads will be converted to triangles.
   // Estimate: assume all quads, so 6 indices per quad instead of 4.
@@ -422,8 +461,30 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     }
   }
 
-  // Upload data to the Metal buffer
-  memcpy([_vertexBuffer contents], renderGList.rawVtxList, vertexBufferSize);
+  // Convert and upload vertex data to the Metal buffer
+  // NDSVertex stores positions and texcoords as s32 fixed-point values that
+  // must be converted to float for Metal. Position coordinates use a scale
+  // factor of 4096, and texture coordinates use a scale factor of 16.
+  MetalVertex *metalVertices = (MetalVertex *)[_vertexBuffer contents];
+  for (size_t i = 0; i < renderGList.rawVertCount; i++) {
+    const NDSVertex &vtx = renderGList.rawVtxList[i];
+
+    // Convert position from s32 fixed-point (scale 1/4096) to float
+    metalVertices[i].position[0] = (float)vtx.position.x / 4096.0f;
+    metalVertices[i].position[1] = (float)vtx.position.y / 4096.0f;
+    metalVertices[i].position[2] = (float)vtx.position.z / 4096.0f;
+    metalVertices[i].position[3] = (float)vtx.position.w / 4096.0f;
+
+    // Convert texture coordinates from s32 fixed-point (scale 1/16) to float
+    metalVertices[i].texCoord[0] = (float)vtx.texCoord.s / 16.0f;
+    metalVertices[i].texCoord[1] = (float)vtx.texCoord.t / 16.0f;
+
+    // Copy vertex color as-is (already in correct u8 format)
+    metalVertices[i].color[0] = vtx.color.r;
+    metalVertices[i].color[1] = vtx.color.g;
+    metalVertices[i].color[2] = vtx.color.b;
+    metalVertices[i].color[3] = vtx.color.a;
+  }
 
   // Now, create the index buffer
   if (_indexBuffer == nil || indexBufferSize > [_indexBuffer length]) {
@@ -477,6 +538,14 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   }
   // Set the label for debugging
   _commandBuffer.label = @"DeSmuMe 3D Render Command Buffer";
+
+  // Bind the color output for this render
+  this->_lastBoundColorOut = _metalColorOut->BindRenderer();
+
+  // Update the color out with our current render target
+  if (_metalColorOut != nullptr && _colorTexture != nil) {
+    _metalColorOut->SetColorTexture(_colorTexture);
+  }
 
   return RENDER3DERROR_NOERR;
 }
@@ -649,9 +718,6 @@ Render3DError MetalRender::RenderGeometry() {
 
   _renderCommandEncoder = nil;
 
-  // commit the command buffer
-  [_commandBuffer commit];
-
   return RENDER3DERROR_NOERR;
 }
 
@@ -793,7 +859,47 @@ Render3DError MetalRender::PostprocessFramebuffer() {
   return RENDER3DERROR_NOERR;
 }
 
-Render3DError MetalRender::EndRender() { return RENDER3DERROR_NOERR; }
+Render3DError MetalRender::EndRender() {
+  // Commit the command buffer and wait for it to complete
+  [_commandBuffer commit];
+  [_commandBuffer waitUntilCompleted];
+
+  // Unbind the renderer to trigger framebuffer readback
+  _colorOut->UnbindRenderer(this->_lastBoundColorOut);
+  this->_lastBoundColorOut = RENDER3D_RESOURCE_INDEX_NONE;
+
+  return RENDER3DERROR_NOERR;
+}
+
+Render3DError MetalRender::ClearUsingImage(const u16 *__restrict colorBuffer,
+                                           const u32 *__restrict depthBuffer,
+                                           const u8 *__restrict fogBuffer,
+                                           const u8 opaquePolyID) {
+  // MetalRender uses GPU-based rendering, so uploading the clear image would
+  // require:
+  // 1. Creating temporary Metal textures for color and depth data
+  // 2. Converting format from RGBA5551/24-bit depth to Metal formats
+  // 3. Using a blit encoder or full-screen quad to render the clear image
+  // 4. Handling scaling if framebuffer size != native DS resolution
+  //
+  // This is complex and the clear image feature (RearPlaneMode) is rarely used
+  // by games. For now, we return an error to fall back to ClearUsingValues,
+  // which provides a simple solid-color clear instead of the full image.
+  //
+  // Games that rely on RearPlaneMode will have incorrect backgrounds (solid
+  // color instead of texture) until this is fully implemented. Known affected
+  // games:
+  // - The Chronicles of Narnia: The Lion, the Witch and the Wardrobe
+  // - Harry Potter and the Order of Phoenix
+  // - Blazer Drive
+  // - Sonic Chronicles: The Dark Brotherhood
+  //
+  // TODO: Implement full GPU-based clear image rendering for proper
+  // RearPlaneMode support.
+
+  // Return an error to trigger fallback to ClearUsingValues
+  return RENDER3DERROR_INVALID_BINDING;
+}
 
 Render3DError
 MetalRender::ClearUsingValues(const Color4u8 &clearColor6665,
@@ -902,6 +1008,31 @@ Render3DError MetalRender::SetupTexture(const POLY &thePoly,
 }
 
 Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
+  // calculate how much the viewport is scaled from the native framebuffer size
+  const float wScalar = _framebufferWidth / (float)GPU_FRAMEBUFFER_NATIVE_WIDTH;
+  const float hScalar =
+      _framebufferHeight / (float)GPU_FRAMEBUFFER_NATIVE_HEIGHT;
+
+  // set the viewport
+  MTLViewport metalViewport;
+  metalViewport.originX = viewport.x * wScalar;
+  // Y-coordinate need special handling because the viewport is flipped
+  // vertically
+  // Metal uses top-left origin, but the NDS viewport is bottom-left origin
+  // so we need to flip the Y-coordinate, then apply the scaling factor
+  metalViewport.originY = -(viewport.y + (192 - viewport.height)) * hScalar;
+  metalViewport.width = viewport.width * wScalar;
+  metalViewport.height = viewport.height * hScalar;
+
+  // Set the depth range for this
+  // 0.0 is the near plane, 1.0 is the far plane
+  // NDS uses full depth range, so we use Metal's default depth range
+  metalViewport.znear = 0.0;
+  metalViewport.zfar = 1.0;
+
+  // Set the viewport
+  [_renderCommandEncoder setViewport:metalViewport];
+
   return RENDER3DERROR_NOERR;
 }
 
@@ -1016,3 +1147,257 @@ id<MTLTexture> MetalTexture::GetTexID() const { return _texID; }
 bool MetalTexture::IsTexInited() const { return _isTexInited; }
 
 u32 *MetalTexture::GetUnpackBuffer() const { return _unpackBuffer; }
+
+MetalRenderColorOut::MetalRenderColorOut(MTLDevicePtr device, size_t w,
+                                         size_t h)
+    : Render3DColorOut(), _device(device), _colorTexture(nil),
+      _masterBuffer32(nullptr), _readbackBuffer{nullptr, nullptr},
+      _needsColorConversion(false) {
+  // set the frame buffer dimension
+  this->_framebufferWidth = w;
+  this->_framebufferHeight = h;
+  this->_framebufferPixelCount = w * h;
+  this->_framebufferSize32 = w * h * sizeof(Color4u8);
+
+  // allocate single large buffer for both readback and master buffers
+  // use an aligned allocation to ensure proper alignment for GPU operations
+  _masterBuffer32 =
+      (Color4u8 *)malloc_aligned(this->_framebufferSize32 * 2,
+                                 64); // 64-byte alignment for SIMD operations
+
+  if (_masterBuffer32 == nullptr) {
+    throw std::runtime_error("Failed to allocate master buffer");
+  }
+
+  // initialize the readback buffers by splitting the master buffer into two
+  // halves for double-buffering
+  _readbackBuffer[0] = _masterBuffer32;
+  _readbackBuffer[1] = _masterBuffer32 + this->_framebufferPixelCount;
+
+  // Point the base class buffer pointers to the readback buffers
+  this->_buffer32[0] = _readbackBuffer[0];
+  this->_buffer32[1] = _readbackBuffer[1];
+
+  // Initialize the state array for async readback (both buffers start free)
+  this->_state[0] = AsyncReadState_Free;
+  this->_state[1] = AsyncReadState_Free;
+
+  NSLog(@"MetalRenderColorOut created with framebuffer size: %zu x %zu", w, h);
+}
+
+MetalRenderColorOut::~MetalRenderColorOut() {
+  // free the master buffer
+  if (_masterBuffer32 != nullptr) {
+    free_aligned(_masterBuffer32);
+    _masterBuffer32 = nullptr;
+  }
+
+  // set the color texture to nil
+  _colorTexture = nil;
+
+  // nullify the readback buffers
+  _readbackBuffer[0] = nullptr;
+  _readbackBuffer[1] = nullptr;
+  _buffer32[0] = nullptr;
+  _buffer32[1] = nullptr;
+
+  // nullify the device
+  _device = nil;
+
+  // nullify the needs color conversion flag
+  _needsColorConversion = false;
+  NSLog(@"MetalRenderColorOut destroyed");
+}
+
+void MetalRenderColorOut::Reset() {
+  if (_masterBuffer32 != nullptr) {
+    memset(_masterBuffer32, 0, this->_framebufferSize32 * 2);
+  }
+}
+
+size_t MetalRenderColorOut::BindRead32() {
+  return this->Render3DColorOut::BindRead32();
+}
+
+size_t MetalRenderColorOut::UnbindRead32() {
+  return this->Render3DColorOut::UnbindRead32();
+}
+
+size_t MetalRenderColorOut::BindRenderer() {
+  size_t idxFree = RENDER3D_RESOURCE_INDEX_NONE;
+
+  // Find a free or ready buffer slot
+  if (_state[0] == AsyncReadState_Free) {
+    idxFree = 0;
+  } else if (_state[1] == AsyncReadState_Free) {
+    idxFree = 1;
+  } else if (_state[0] == AsyncReadState_Ready) {
+    // reuse the ready buffer
+    idxFree = 0;
+    _currentReadyIdx = RENDER3D_RESOURCE_INDEX_NONE;
+  } else if (_state[1] == AsyncReadState_Ready) {
+    idxFree = 1;
+    _currentReadyIdx = RENDER3D_RESOURCE_INDEX_NONE;
+  }
+
+  // mark the buffer as in-use
+  if (idxFree != RENDER3D_RESOURCE_INDEX_NONE) {
+    // Free the previously used buffer before switching to a new one
+    if (_currentUsageIdx != RENDER3D_RESOURCE_INDEX_NONE) {
+      _state[_currentUsageIdx] = AsyncReadState_Free;
+    }
+
+    _state[idxFree] = AsyncReadState_Using;
+    _currentUsageIdx = idxFree;
+  }
+
+  return idxFree;
+}
+
+void MetalRenderColorOut::UnbindRenderer(const size_t idxRead) {
+  if ((idxRead > 1) || (this->_state[idxRead] == AsyncReadState_Disabled)) {
+    return;
+  }
+
+  // Call base class to update state
+  this->Render3DColorOut::UnbindRenderer(idxRead);
+
+  // Copy texture data from GPU memory to CPU accessible buffer
+  if (_colorTexture != nil && _readbackBuffer[idxRead] != nullptr) {
+    @autoreleasepool {
+      // Metal texture dimensions
+      MTLRegion region =
+          MTLRegionMake2D(0, 0, _framebufferWidth, _framebufferHeight);
+
+      // Bytes per row in the destination buffer
+      NSUInteger bytesPerRow = _framebufferWidth * sizeof(Color4u8);
+
+      // Copy the texture data from the GPU memory to the CPU accessible buffer
+      [_colorTexture getBytes:_readbackBuffer[idxRead]
+                  bytesPerRow:bytesPerRow
+                   fromRegion:region
+                  mipmapLevel:0];
+
+      // Optionally, perform color format conversion if needed
+      if (_needsColorConversion && (_format == NDSColorFormat_BGR666_Rev)) {
+        _ConvertColorFormat(_readbackBuffer[idxRead], _framebufferPixelCount);
+      }
+    }
+  }
+}
+
+Render3DError MetalRenderColorOut::SetSize(size_t w, size_t h) {
+  if (w == 0 || h == 0) {
+    return RENDER3DERROR_INVALID_VALUE;
+  }
+
+  // Check if the new size is the same as the current size
+  if ((w == this->_framebufferWidth) && (h == this->_framebufferHeight)) {
+    return RENDER3DERROR_NOERR;
+  }
+
+  // Calculate new dimensions (but don't update member variables yet)
+  size_t newPixelCount = w * h;
+  size_t newSize32 = w * h * sizeof(Color4u8);
+
+  // Attempt to allocate new buffer BEFORE modifying any state
+  // This ensures strong exception safety: if allocation fails, object is
+  // unchanged
+  Color4u8 *newMasterBuffer32 = (Color4u8 *)malloc_aligned(newSize32 * 2, 64);
+
+  if (newMasterBuffer32 == nullptr) {
+    // Allocation failed - return error without modifying any member variables
+    NSLog(@"MetalRenderColorOut: Failed to allocate buffer for size %zux%zu", w,
+          h);
+    return RENDER3DERROR_INVALID_BUFFER;
+  }
+
+  // Allocation succeeded - now safe to update all state
+  Color4u8 *oldMasterBuffer32 = _masterBuffer32;
+
+  // Update dimension member variables only after successful allocation
+  _framebufferWidth = w;
+  _framebufferHeight = h;
+  _framebufferPixelCount = newPixelCount;
+  _framebufferSize32 = newSize32;
+
+  // Update the buffer pointers
+  _masterBuffer32 = newMasterBuffer32;
+  _readbackBuffer[0] = newMasterBuffer32;
+  _readbackBuffer[1] = newMasterBuffer32 + _framebufferPixelCount;
+  _buffer32[0] = _readbackBuffer[0];
+  _buffer32[1] = _readbackBuffer[1];
+
+  // Clear the new master buffer
+  memset(_masterBuffer32, 0, _framebufferSize32 * 2);
+
+  // Free the old master buffer
+  if (oldMasterBuffer32 != nullptr) {
+    free_aligned(oldMasterBuffer32);
+  }
+
+  NSLog(@"MetalRenderColorOut resized to: %zu x %zu", this->_framebufferWidth,
+        this->_framebufferHeight);
+  return RENDER3DERROR_NOERR;
+}
+
+const Color4u8 *MetalRenderColorOut::GetFramebuffer32() const {
+  // Return buffer that the emulator is currently using
+  if (_currentReadingIdx32 != RENDER3D_RESOURCE_INDEX_NONE) {
+    if (_state[_currentReadingIdx32] == AsyncReadState_Reading) {
+      return _buffer32[_currentReadingIdx32];
+    }
+  } // Or return the buffer that the renderer is currently using
+  else if (_currentUsageIdx != RENDER3D_RESOURCE_INDEX_NONE) {
+    if (_state[_currentUsageIdx] == AsyncReadState_Using) {
+      return _buffer32[_currentUsageIdx];
+    }
+  } // Otherwise, return nullptr
+
+  return nullptr;
+}
+
+// Fill the framebuffer with zero
+Render3DError MetalRenderColorOut::FillZero() {
+  if (_masterBuffer32 != nullptr) {
+    memset(_masterBuffer32, 0, this->_framebufferSize32 * 2);
+  }
+  return RENDER3DERROR_NOERR;
+}
+
+// Fill the framebuffer with a color
+Render3DError MetalRenderColorOut::FillColor32(const Color4u8 *src,
+                                               const bool isSrcNativeSize) {
+  // May not need this method for Metal
+  return RENDER3DERROR_NOERR;
+}
+
+void MetalRenderColorOut::SetColorTexture(MTLTexturePtr texture) {
+  _colorTexture = texture;
+}
+
+void MetalRenderColorOut::_ConvertColorFormat(Color4u8 *buffer,
+                                              size_t pixelCount) {
+  // The nintendo ds uses BGR666_Rev format for the framebuffer (6 bytes per
+  // channel, reversed order)
+  // Metal uses RGBA8888 format for the framebuffer (8 bytes per channel, in
+  // order)
+
+  for (size_t i = 0; i < pixelCount; i++) {
+    Color4u8 pixel = buffer[i];
+
+    // Convert 8-bit channels to 6-bit channels and pack
+    // DS format: bits 0-5 = blue, bits 6-11 = green, bits 12-17 = red, 18-23 =
+    // alpha
+    u8 r6 = (pixel.r >> 2); // 8 bits -> 6 bits (divide by 4)
+    u8 g6 = (pixel.g >> 2);
+    u8 b6 = (pixel.b >> 2);
+    u8 a6 = (pixel.a >> 3); // Alpha: 8 bits -> 5 bits
+
+    // Pack into BGR666_Rev format
+    buffer[i].r = b6; // Red channel stores blue
+    buffer[i].g = g6; // Green channel stores green
+    buffer[i].b = r6; // Blue channel stores red
+    buffer[i].a = a6; // Alpha channel stores alpha
+  }
+}

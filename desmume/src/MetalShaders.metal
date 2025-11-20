@@ -2,11 +2,13 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Vertex input structure - should match NDSVertex from the emulator
-// Recall: NDSVertex has:
-//   - float position[4] (X, Y, Z, W)
-//   - float texCoord[2] (S, T)
-//   - u8 color[4] (R, G, B, A)
+// Vertex input structure - matches the converted MetalVertex format.
+// Note: NDSVertex in the emulator uses s32 fixed-point values, but those
+// are converted to float on the CPU before uploading to Metal.
+// This structure receives the converted data:
+//   - float4 position: X, Y, Z, W in clip space (NDSVertex.position / 4096.0)
+//   - float2 texCoord: S, T texture coords (NDSVertex.texCoord / 16.0)
+//   - uchar4 color: R, G, B, A (0-255, copied directly from NDSVertex.color)
 struct VertexInput {
     float4 position [[attribute(0)]];  // Position (X, Y, Z, W)
     float2 texCoord [[attribute(1)]];  // Texture coordinates (S, T)
