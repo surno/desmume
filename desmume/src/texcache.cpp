@@ -30,6 +30,7 @@
 #include "common.h"
 #include "debug.h"
 #include "gfx3d.h"
+#include "types.h"
 
 #if defined(ENABLE_AVX2)
 #include "./utils/colorspacehandler/colorspacehandler_AVX2.h"
@@ -204,24 +205,15 @@ static MemSpan MemSpan_TexPalette(u32 ofs, u32 len, bool silent) {
   return ret;
 }
 
-static bool TextureLRUCompare(TextureStore *tex1, TextureStore *tex2) {
-  const size_t cacheAge1 = tex1->GetCacheAge();
-  const size_t cacheAge2 = tex2->GetCacheAge();
-
-  if (cacheAge1 == cacheAge2) {
-    return (tex1->GetCacheUseCount() > tex2->GetCacheUseCount());
-  }
-
-  return (cacheAge1 < cacheAge2);
-}
-
 TextureCache texCache;
 
 TextureCache::TextureCache() {
   _texCacheMap.clear();
-  _texCacheList.reserve(4096);
   _actualCacheSize = 0;
   _cacheSizeThreshold = TEXCACHE_DEFAULT_THRESHOLD;
+
+  _lruHead = nullptr;
+  _lruTail = nullptr;
 
   memset(_paletteDump, 0, sizeof(_paletteDump));
 }
@@ -267,50 +259,41 @@ void TextureCache::Invalidate() {
 void TextureCache::Evict() {
   // debug print
   // printf("%d %d/%d\n",index.size(),cache_size/1024,target/1024);
+  this->UpdateLRUFromFlags();
 
   // dont do anything unless we're over the target
   if (this->_actualCacheSize <= this->_cacheSizeThreshold) {
-    for (size_t i = 0; i < this->_texCacheList.size(); i++) {
-      this->_texCacheList[i]->IncreaseCacheAge(1);
-    }
-
     return;
   }
 
   // aim at cutting the cache to half of the max size
   size_t targetCacheSize = this->_cacheSizeThreshold / 2;
 
-  // Sort the textures in cache by age and usage count. Textures that we want to
-  // keep in cache are placed in the front of the list, while textures we want
-  // to evict are sorted to the back of the list.
-  std::sort(this->_texCacheList.begin(), this->_texCacheList.end(),
-            &TextureLRUCompare);
+  // Evict from the tail until we are below the target size
+  while (this->_actualCacheSize > targetCacheSize && this->_lruTail) {
+    TextureStore *leastRecent = this->_lruTail;
 
-  while (this->_actualCacheSize > targetCacheSize) {
-    if (this->_texCacheMap.size() == 0)
-      break; // just in case.. doesnt seem possible, cache_size wouldve been 0
+    // unlink from the tail
+    this->_lruTail = leastRecent->_lruPrev;
 
-    TextureStore *item = this->_texCacheList.back();
-    this->Remove(item);
-    this->_texCacheList.pop_back();
+    if (this->_lruTail) {
+      this->_lruTail->_lruNext = nullptr;
+    } else {
+      // the list is now empty, update the cache head
+      this->_lruHead = nullptr;
+    }
 
-    // printf("evicting! totalsize:%d\n",cache_size);
-    delete item;
-  }
+    this->Remove(leastRecent);
 
-  for (size_t i = 0; i < this->_texCacheList.size(); i++) {
-    this->_texCacheList[i]->IncreaseCacheAge(1);
+    delete leastRecent;
   }
 }
 
 void TextureCache::Reset() {
-  for (size_t i = 0; i < this->_texCacheList.size(); i++) {
-    delete this->_texCacheList[i];
-  }
-
   this->_texCacheMap.clear();
-  this->_texCacheList.clear();
   this->_actualCacheSize = 0;
+  this->_lruHead = nullptr;
+  this->_lruTail = nullptr;
   memset(this->_paletteDump, 0, sizeof(this->_paletteDump));
 }
 
@@ -346,16 +329,67 @@ TextureStore *TextureCache::GetTexture(TEXIMAGE_PARAM texAttributes,
 void TextureCache::Add(TextureStore *texItem) {
   const TextureCacheKey key = texItem->GetCacheKey();
   this->_texCacheMap[key] = texItem;
-  this->_texCacheList.push_back(texItem);
   this->_actualCacheSize += texItem->GetCacheSize();
   // printf("allocating: up to %d with %d items\n", this->cache_size,
   // this->cacheTable.size());
+
+  this->MoveToFront(texItem);
 }
 
 void TextureCache::Remove(TextureStore *texItem) {
   const TextureCacheKey key = texItem->GetCacheKey();
   this->_texCacheMap.erase(key);
   this->_actualCacheSize -= texItem->GetCacheSize();
+
+  // Remove from the LRU list
+  if (texItem->_lruPrev) {
+    texItem->_lruPrev->_lruNext = texItem->_lruNext;
+  } else {
+    // this is the head, update the cache head
+    this->_lruHead = texItem->_lruNext;
+  }
+
+  if (texItem->_lruNext) {
+    texItem->_lruNext->_lruPrev = texItem->_lruPrev;
+  } else {
+    // this is the tail, update the cache tail
+    this->_lruTail = texItem->_lruPrev;
+  }
+
+  // clean the LRU pointers
+  texItem->_lruPrev = nullptr;
+  texItem->_lruNext = nullptr;
+}
+
+void TextureCache::MoveToFront(TextureStore *texItem) {
+  if (texItem == this->_lruHead) {
+    return;
+  }
+
+  // Remove from current position
+  if (texItem->_lruPrev) {
+    texItem->_lruPrev->_lruNext = texItem->_lruNext;
+  }
+
+  if (texItem->_lruNext) {
+    texItem->_lruNext->_lruPrev = texItem->_lruPrev;
+  } else {
+    // this is the tail, update the cache tail
+    this->_lruTail = texItem->_lruPrev;
+  }
+
+  // Insert at the front of the cache list
+  texItem->_lruPrev = nullptr;
+  texItem->_lruNext = this->_lruHead;
+
+  if (this->_lruHead) {
+    this->_lruHead->_lruPrev = texItem;
+  } else {
+    // the list is empty, update the cache tail
+    this->_lruTail = texItem;
+  }
+
+  this->_lruHead = texItem;
 }
 
 TextureCacheKey TextureCache::GenerateKey(const TEXIMAGE_PARAM texAttributes,
@@ -365,6 +399,19 @@ TextureCacheKey TextureCache::GenerateKey(const TEXIMAGE_PARAM texAttributes,
   // duplicate entries.
   return (TextureCacheKey)(((u64)palAttributes << 32) |
                            (u64)(texAttributes.value & 0x3FF0FFFF));
+}
+
+void TextureCache::UpdateLRUFromFlags() {
+  TextureStore *curr = this->_lruHead;
+  while (curr) {
+    // We must save the next pointer before moving to the next node, as the
+    // current node may be deleted.
+    TextureStore *next = curr->_lruNext;
+    if (curr->_usedThisFrame.exchange(false, std::memory_order_relaxed)) {
+      this->MoveToFront(curr);
+    }
+    curr = next;
+  }
 }
 
 TextureStore::TextureStore() {
@@ -397,8 +444,15 @@ TextureStore::TextureStore() {
   _isLoadNeeded = false;
 
   _cacheSize = 0;
-  _cacheAge = 0;
-  _cacheUsageCount = 0;
+
+  _lruPrev = nullptr;
+  _lruNext = nullptr;
+
+  _usedThisFrame.store(false, std::memory_order_relaxed);
+}
+
+void TextureStore::MarkUsedThisFrame() {
+  _usedThisFrame.store(true, std::memory_order_relaxed);
 }
 
 TextureStore::TextureStore(const TEXIMAGE_PARAM texAttributes,
@@ -485,8 +539,9 @@ TextureStore::TextureStore(const TEXIMAGE_PARAM texAttributes,
   _isLoadNeeded = true;
 
   _cacheSize = _packTotalSize;
-  _cacheAge = 0;
-  _cacheUsageCount = 0;
+
+  _lruPrev = nullptr;
+  _lruNext = nullptr;
 }
 
 TextureStore::~TextureStore() {
@@ -659,22 +714,6 @@ size_t TextureStore::GetCacheSize() const { return this->_cacheSize; }
 void TextureStore::SetCacheSize(size_t cacheSize) {
   this->_cacheSize = cacheSize;
 }
-
-size_t TextureStore::GetCacheAge() const { return this->_cacheAge; }
-
-void TextureStore::IncreaseCacheAge(const size_t ageAmount) {
-  this->_cacheAge += ageAmount;
-}
-
-void TextureStore::ResetCacheAge() { this->_cacheAge = 0; }
-
-size_t TextureStore::GetCacheUseCount() const { return this->_cacheUsageCount; }
-
-void TextureStore::IncreaseCacheUsageCount(const size_t usageCount) {
-  this->_cacheUsageCount += usageCount;
-}
-
-void TextureStore::ResetCacheUsageCount() { this->_cacheUsageCount = 0; }
 
 void TextureStore::Update() {
   MemSpan currentPaletteMS =
@@ -1540,7 +1579,8 @@ void __NDSTextureUnpackA3I5_AltiVec(const size_t texelCount,
 
   for (size_t i = 0; i < texelCount; i += sizeof(v128u8),
               srcData += sizeof(v128u8), dstBuffer += sizeof(v128u8)) {
-    // Must be unaligned since srcData could sit outside of a 16-byte boundary.
+    // Must be unaligned since srcData could sit outside of a 16-byte
+    // boundary.
     const v128u8 bits =
         vec_perm(vec_ld(0, srcData), vec_ld(16, srcData), unalignedShift);
 
@@ -1623,10 +1663,10 @@ void NDSTextureUnpackA3I5(const size_t srcSize, const u8 *__restrict srcData,
   const size_t texelCount = srcSize / sizeof(u8);
 
 #if defined(ENABLE_NEON_A64)
-  // Only ARM NEON-A64 can perform register-based table lookups across 64 bytes,
-  // which just so happens to be the size of the palette table we need to
-  // search. As of this writing, no other SIMD instruction sets we're currently
-  // using have this capability.
+  // Only ARM NEON-A64 can perform register-based table lookups across 64
+  // bytes, which just so happens to be the size of the palette table we need
+  // to search. As of this writing, no other SIMD instruction sets we're
+  // currently using have this capability.
   // - rogerman, 2022/04/04
   __NDSTextureUnpackA3I5_NEON<TEXCACHEFORMAT>(texelCount, srcData, srcPal,
                                               dstBuffer);
@@ -1634,8 +1674,8 @@ void NDSTextureUnpackA3I5(const size_t srcSize, const u8 *__restrict srcData,
   // Although AltiVec can only perform register-based table lookups across 32
   // bytes, it isn't too much more expensive because vperm is fast enough to
   // compensate for the extra overhead of performing two separate 32 byte
-  // lookups. Also, AltiVec's native 16-bit RGBA to 32-bit RGBA color conversion
-  // makes this function worth it, despite the extra overhead.
+  // lookups. Also, AltiVec's native 16-bit RGBA to 32-bit RGBA color
+  // conversion makes this function worth it, despite the extra overhead.
   __NDSTextureUnpackA3I5_AltiVec<TEXCACHEFORMAT>(texelCount, srcData, srcPal,
                                                  dstBuffer);
 #else
@@ -1658,16 +1698,17 @@ void __NDSTextureUnpackA5I3_AVX2(const size_t texelCount,
                                  u32 *__restrict dstBuffer) {
   v256u32 convertedColor[4];
 
-  // We must assume that srcPal is only 16 bytes, so we're simply going to read
-  // this same range of bytes twice in order to fill the 32 byte vector.
+  // We must assume that srcPal is only 16 bytes, so we're simply going to
+  // read this same range of bytes twice in order to fill the 32 byte vector.
   const v256u16 pal16_LUT =
       _mm256_loadu2_m128i((v128u16 *)srcPal, (v128u16 *)srcPal);
 
   for (size_t i = 0; i < texelCount; i += sizeof(v256u8),
               srcData += sizeof(v256u8), dstBuffer += sizeof(v256u32)) {
-    // Must be unaligned since srcData could sit outside of a 32-byte boundary.
-    // Not as big a deal on AVX2, since most AVX2-capable CPUs don't have as bad
-    // of a latency penalty compared to earlier CPUs when doing unaligned loads.
+    // Must be unaligned since srcData could sit outside of a 32-byte
+    // boundary. Not as big a deal on AVX2, since most AVX2-capable CPUs don't
+    // have as bad of a latency penalty compared to earlier CPUs when doing
+    // unaligned loads.
     const v256u8 bits = _mm256_loadu_si256((v256u8 *)srcData);
 
     v256u8 idx =
@@ -1731,7 +1772,8 @@ void __NDSTextureUnpackA5I3_SSSE3(const size_t texelCount,
   const v128u16 pal16_LUT = _mm_load_si128((v128u16 *)srcPal);
 
   for (size_t i = 0; i < texelCount; i += sizeof(v128u8)) {
-    // Must be unaligned since srcData could sit outside of a 16-byte boundary.
+    // Must be unaligned since srcData could sit outside of a 16-byte
+    // boundary.
     const v128u8 bits = _mm_loadu_si128((v128u8 *)(srcData + i));
 
     const v128u8 idx =
@@ -1743,8 +1785,8 @@ void __NDSTextureUnpackA5I3_SSSE3(const size_t texelCount,
     const v128u8 idx1 =
         _mm_add_epi8(_mm_unpackhi_epi8(idx, idx), _mm_set1_epi16(0x0100));
 
-    // These pshufb instructions are why we need SSSE3, since we are using them
-    // as the palette table lookup.
+    // These pshufb instructions are why we need SSSE3, since we are using
+    // them as the palette table lookup.
     const v128u16 palColor0 = _mm_shuffle_epi8(pal16_LUT, idx0);
     const v128u16 palColor1 = _mm_shuffle_epi8(pal16_LUT, idx1);
 
@@ -1846,7 +1888,8 @@ void __NDSTextureUnpackA5I3_AltiVec(const size_t texelCount,
 
   for (size_t i = 0; i < texelCount; i += sizeof(v128u8),
               srcData += sizeof(v128u8), dstBuffer += sizeof(v128u8)) {
-    // Must be unaligned since srcData could sit outside of a 16-byte boundary.
+    // Must be unaligned since srcData could sit outside of a 16-byte
+    // boundary.
     const v128u8 bits =
         vec_perm(vec_ld(0, srcData), vec_ld(16, srcData), unalignedShift);
 

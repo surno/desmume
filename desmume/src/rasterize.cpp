@@ -468,8 +468,7 @@ Render3DError RasterizerUnit<RENDERER>::_SetupTexture(const POLY &thePoly,
 
   this->_textureWrapMode = thePoly.texParam.TextureWrapMode;
 
-  theTexture->ResetCacheAge();
-  theTexture->IncreaseCacheUsageCount(1);
+  theTexture->MarkUsedThisFrame();
 
   return RENDER3DERROR_NOERR;
 }

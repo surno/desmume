@@ -5881,8 +5881,7 @@ Render3DError OpenGLRenderer_1_2::SetupTexture(const POLY &thePoly,
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0f);
   }
 
-  theTexture->ResetCacheAge();
-  theTexture->IncreaseCacheUsageCount(1);
+  theTexture->MarkUsedThisFrame();
 
   return OGLERROR_NOERR;
 }

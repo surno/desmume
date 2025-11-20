@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 46;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -10558,6 +10558,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
+				CLANG_USE_OPTIMIZATION_PROFILE = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					NDEBUG,
 					GDB_STUB,
