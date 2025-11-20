@@ -41,20 +41,189 @@ vertex VertexOutput vertexShader(VertexInput in [[stage_in]]) {
     return out;
 }
 
+struct FragmentOutput {
+    float4 color [[color(0)]];        // Main color buffer
+    uint polyID [[color(1)]];         // Polygon ID (for edge marking)
+    float fogEnable [[color(2)]];     // Fog enable flag (for fog)
+};
 
-// Fragment shader
-// Determines the final color of each pixel
-fragment float4 fragmentShaderTextured(
+fragment FragmentOutput fragmentShaderTextured(
     VertexOutput in [[stage_in]],
     texture2d<float> colorTexture [[texture(0)]],
-    sampler textureSampler [[sampler(0)]]
+    sampler textureSampler [[sampler(0)]],
+    constant PolygonAttributes& polyAttr [[buffer(0)]]  // Per-polygon attributes
 ) {
-    // Sample the texture at the interpolated texture coordinate
-    float4 texColor = colorTexture.sample(textureSampler, in.texCoord);
+    FragmentOutput out;
     
-    // Modulate texture color with vertex color
-    return texColor * in.color;
+    // Calculate color
+    float4 texColor = colorTexture.sample(textureSampler, in.texCoord);
+    out.color = texColor * in.color;
+    
+    // Output polygon ID for edge marking
+    out.polyID = polyAttr.polygonID;
+    
+    // Output fog enable flag (1.0 = enabled, 0.0 = disabled)
+    out.fogEnable = polyAttr.enableFog ? 1.0 : 0.0;
+    
+    return out;
 }
 
+// =============================================================
+// POST PROCESSING SHADERS
+// =============================================================
 
+struct PolygonAttributes {
+    uint polygonID;       // Polygon ID for edge marking (0-63)
+    bool enableFog;       // Whether fog is enabled for this polygon
+};
 
+// Render states structure - must match the MetalRender RenderStates struct
+struct RenderStates {
+    bool enableAntialiasing;
+    bool enableFogAlphaOnly;
+    int clearPolyID;
+    float clearDepth;
+    float alphaTestRef;
+    float fogOffset;  // Integer value [0, 32767] stored as float
+    float fogStep;    // Integer value [0, 32767] stored as float
+    float pad_0;
+    float4 fogColor;
+    float4 edgeColor[8];
+    float4 toonColor[32];
+};
+
+// Vertex structure for fullscreen quad
+struct PostprocessVertexInput {
+    float2 position [[attribute(0)]];  // NDC position (-1 to 1)
+    float2 texCoord [[attribute(1)]];  // Texture coordinate (0 to 1)
+};
+
+struct PostprocessVertexOutput {
+    float4 position [[position]];
+    float2 texCoord;
+};
+
+// Simple pass-through vertex shader for fullscreen quad
+vertex PostprocessVertexOutput postprocessVertex(
+    PostprocessVertexInput in [[stage_in]]
+) {
+    PostprocessVertexOutput out;
+    out.position = float4(in.position, 0.0, 1.0);
+    out.texCoord = in.texCoord;
+    return out;
+}
+
+// ============================================================================
+// EDGE MARKING SHADER
+// ============================================================================
+// Edge marking detects polygon boundaries by comparing polygon IDs
+// in a cross pattern (center + 4 neighbors: right, up, left, down)
+
+fragment float4 edgeMarkFragment(
+    PostprocessVertexOutput in [[stage_in]],
+    texture2d<float> depthTexture [[texture(0)]],     // Depth buffer
+    texture2d<uint> polyIDTexture [[texture(1)]],     // Polygon ID buffer
+    constant RenderStates& state [[buffer(0)]]
+) {
+    // Get integer coordinates for texel fetches
+    int2 coord = int2(in.position.xy);
+    
+    // Sample polygon ID at center and 4 neighbors (cross pattern)
+    // Each polygon has an ID (0-63) which we read from the stencil/ID buffer
+    uint polyID[5];
+    polyID[0] = polyIDTexture.read(coord + int2( 0,  0)).r;  // Center
+    polyID[1] = polyIDTexture.read(coord + int2( 1,  0)).r;  // Right
+    polyID[2] = polyIDTexture.read(coord + int2( 0,  1)).r;  // Up
+    polyID[3] = polyIDTexture.read(coord + int2(-1,  0)).r;  // Left
+    polyID[4] = polyIDTexture.read(coord + int2( 0, -1)).r;  // Down
+    
+    // Sample depth at same locations
+    float depth[5];
+    depth[0] = depthTexture.read(coord + int2( 0,  0)).r;
+    depth[1] = depthTexture.read(coord + int2( 1,  0)).r;
+    depth[2] = depthTexture.read(coord + int2( 0,  1)).r;
+    depth[3] = depthTexture.read(coord + int2(-1,  0)).r;
+    depth[4] = depthTexture.read(coord + int2( 0, -1)).r;
+    
+    // No edge by default
+    float4 edgeColor = float4(0.0);
+    
+    // Check each neighbor against the center
+    // If polygon IDs differ AND depth is valid, we have an edge
+    for (int i = 1; i < 5; i++) {
+        if (polyID[0] != polyID[i]) {
+            // Edge detected! Use the neighbor's polygon ID to pick the edge color
+            // The DS uses 3-bit edge color selection: polygon ID bits 3-5
+            uint edgeColorIndex = (polyID[i] >> 3) & 0x7;
+            
+            // Blend edge color based on depth difference
+            // Larger depth differences = more visible edges
+            float depthDiff = abs(depth[0] - depth[i]);
+            float edgeStrength = min(depthDiff * 8.0, 1.0);
+            
+            // Accumulate edge color (allows multiple edges to blend)
+            edgeColor = max(edgeColor, state.edgeColor[edgeColorIndex] * edgeStrength);
+        }
+    }
+    
+    return edgeColor;
+}
+
+// ============================================================================
+// FOG SHADER
+// ============================================================================
+// Fog blends the rendered color toward the fog color based on depth
+// using a density lookup table
+
+fragment float4 fogFragment(
+    PostprocessVertexOutput in [[stage_in]],
+    texture2d<float> depthTexture [[texture(0)]],          // Depth buffer
+    texture2d<float> fogAttributesTexture [[texture(1)]], // Per-pixel fog enable
+    texture1d<float> fogDensityTable [[texture(2)]],      // Fog density LUT
+    constant RenderStates& state [[buffer(0)]]
+) {
+    // Read depth and fog attributes for this pixel
+    float depth = depthTexture.sample(sampler(min_filter::nearest), in.texCoord).r;
+    float4 fogAttribs = fogAttributesTexture.sample(sampler(min_filter::nearest), in.texCoord);
+    
+    // Check if fog is enabled for this pixel (per-polygon setting)
+    // Stored in red channel, > 0.999 means fog enabled
+    bool polyEnableFog = (fogAttribs.r > 0.999);
+    
+    if (!polyEnableFog) {
+        // Fog disabled for this polygon, output transparent (no fog blend)
+        return float4(0.0);
+    }
+    
+    // Calculate fog density using the NDS fog formula
+    // depth is normalized [0, 1], fogOffset and fogStep are in range [0, 32767]
+    // We need to scale depth to match the fog parameters
+    
+    int fogIndex;
+    float depthScaled = depth * 32768.0;  // Scale to [0, 32768]
+    
+    if (state.fogStep == 0.0) {
+        // Special case: fog step is 0, use simple threshold
+        fogIndex = (depthScaled <= state.fogOffset) ? 0 : 31;
+    } else if (depthScaled < state.fogOffset) {
+        // Before fog starts, use first density value
+        fogIndex = 0;
+    } else {
+        // Map depth to density table index (0-31)
+        // This formula matches the NDS hardware fog calculation
+        fogIndex = int((depthScaled - state.fogOffset) / state.fogStep);
+        fogIndex = clamp(fogIndex, 0, 31);
+    }
+    
+    // Look up fog density from the 32-entry table
+    // Density is normalized [0, 1] where 1 = full fog
+    float fogDensity = fogDensityTable.read(fogIndex).r;
+    
+    // Return fog weight as RGBA
+    // This will be blended with the scene using special blend modes
+    // Alpha controls fog intensity, RGB is fog color
+    float4 fogWeight = state.fogColor * fogDensity;
+    fogWeight.a = fogDensity;
+    
+    return fogWeight;
+}

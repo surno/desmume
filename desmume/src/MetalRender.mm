@@ -62,9 +62,11 @@ MetalRender::MetalRender()
       _depthStencilStateShadowPass1(nil), _depthStencilStateShadowPass2(nil),
       _vertexBuffer(nil), _indexBuffer(nil), _colorTexture(nil),
       _depthTexture(nil), _renderPassDescriptor(nil),
-      _enableAlphaBlending(false), _metalColorOut(nullptr),
-      _samplerStateClampNearest(nil), _samplerStateClampLinear(nil),
-      _samplerStateRepeatNearest(nil), _samplerStateRepeatLinear(nil) {
+      _enableAlphaBlending(false), _enableAntialiasing(false),
+      _metalColorOut(nullptr), _samplerStateClampNearest(nil),
+      _samplerStateClampLinear(nil), _samplerStateRepeatNearest(nil),
+      _samplerStateRepeatLinear(nil), _samplerStateMirrorNearest(nil),
+      _samplerStateMirrorLinear(nil) {
   // Initialize device info
   _deviceInfo.renderID = RENDERID_METAL;
   _deviceInfo.renderName = "Metal";
@@ -98,6 +100,7 @@ MetalRender::MetalRender()
   if (InitializeRenderTargets(GPU_FRAMEBUFFER_NATIVE_WIDTH,
                               GPU_FRAMEBUFFER_NATIVE_HEIGHT) !=
       RENDER3DERROR_NOERR) {
+
     throw std::runtime_error("Failed to initialize render targets");
   }
 
@@ -109,6 +112,25 @@ MetalRender::MetalRender()
 
   // Connect the color texture to the color output for framebuffer readback
   _metalColorOut->SetColorTexture(_colorTexture);
+
+  // initialize the postprocessing pipelines
+  if (InitializePostprocessPipelines() != RENDER3DERROR_NOERR) {
+    throw std::runtime_error("Failed to initialize postprocessing pipelines");
+  }
+
+  // create the fullscreen quad vertex buffer
+  if (CreateFullscreenQuad() != RENDER3DERROR_NOERR) {
+    throw std::runtime_error("Failed to create fullscreen quad vertex buffer");
+  }
+
+  // allocate the render states buffer
+  _renderStatesBuffer =
+      [_device newBufferWithLength:sizeof(RenderStates)
+                           options:MTLResourceStorageModeShared];
+
+  if (_renderStatesBuffer == nil) {
+    throw std::runtime_error("Failed to allocate render states buffer");
+  }
 }
 
 MetalRender::~MetalRender() {
@@ -133,6 +155,8 @@ MetalRender::~MetalRender() {
   _samplerStateClampLinear = nil;
   _samplerStateRepeatNearest = nil;
   _samplerStateRepeatLinear = nil;
+  _samplerStateMirrorNearest = nil;
+  _samplerStateMirrorLinear = nil;
 
   // Clean up the color output object
   if (_metalColorOut != nullptr) {
@@ -144,6 +168,19 @@ MetalRender::~MetalRender() {
 
 Render3DError
 MetalRender::ApplyRenderingSettings(const GFX3D_State &renderState) {
+  // Call the base class implementation to handle common settings
+  Render3DError error = this->Render3D::ApplyRenderingSettings(renderState);
+  if (error != RENDER3DERROR_NOERR) {
+    return error;
+  }
+
+  // Cache Metal-specific rendering settings
+  _enableAlphaBlending = (renderState.DISP3DCNT.EnableAlphaBlending != 0);
+  _enableAntialiasing = (renderState.DISP3DCNT.EnableAntialiasing != 0);
+
+  // Note: _enableTextureSampling, _enableEdgeMark, and _enableFog are already
+  // set by the base class ApplyRenderingSettings() implementation
+
   return RENDER3DERROR_NOERR;
 }
 
@@ -270,6 +307,12 @@ Render3DError MetalRender::InitializePipelineState() {
   pipelineDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
   pipelineDesc.stencilAttachmentPixelFormat = MTLPixelFormatStencil8;
+
+  // Configure additional color attachments for postprocessing
+  pipelineDesc.colorAttachments[1].pixelFormat =
+      MTLPixelFormatR8Uint; // Polygon ID
+  pipelineDesc.colorAttachments[2].pixelFormat =
+      MTLPixelFormatR8Unorm; // Fog enable flag
 
   // create the pipeline state
   NSError *error = nil;
@@ -547,6 +590,73 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     _metalColorOut->SetColorTexture(_colorTexture);
   }
 
+  // capture rendering states for postprocessing
+  _enableFog =
+      renderState.DISP3DCNT.EnableFog && (renderGList.clippedPolyCount > 0);
+  _enableEdgeMark = renderState.DISP3DCNT.EnableEdgeMarking &&
+                    (renderGList.clippedPolyCount > 0);
+
+  if (_enableFog || _enableEdgeMark) {
+    // Update the render states buffer with the current render states
+    RenderStates *states = (RenderStates *)[_renderStatesBuffer contents];
+
+    // Fog parameters (keep as integer values, not normalized)
+    // The shader will use these directly in the fog density calculation
+    states->fogOffset = (float)(renderState.fogOffset & 0x7FFF);
+    states->fogStep = (float)(0x0400 >> renderState.fogShift);
+
+    // Fog color is a 5-bit value, so we need to divide by 31
+    states->fogColor[0] = (float)(renderState.fogColor & 0x1F) / 31.0f;
+    states->fogColor[1] = (float)((renderState.fogColor >> 5) & 0x1F) / 31.0f;
+    states->fogColor[2] = (float)((renderState.fogColor >> 10) & 0x1F) / 31.0f;
+    states->fogColor[3] = (float)((renderState.fogColor >> 15) & 0x1F) / 31.0f;
+
+    // Copy fog color to cached render states for use in PostprocessFramebuffer
+    _currentRenderStates.fogColor[0] = states->fogColor[0];
+    _currentRenderStates.fogColor[1] = states->fogColor[1];
+    _currentRenderStates.fogColor[2] = states->fogColor[2];
+    _currentRenderStates.fogColor[3] = states->fogColor[3];
+
+    // Edge colors (8 colors, each a 5-bit RGB value)
+    for (size_t i = 0; i < 8; i++) {
+      const u16 edgeColor = renderState.edgeMarkColorTable[i];
+      states->edgeColor[i][0] = (float)(edgeColor & 0x1F) / 31.0f;
+      states->edgeColor[i][1] = (float)((edgeColor >> 5) & 0x1F) / 31.0f;
+      states->edgeColor[i][2] = (float)((edgeColor >> 10) & 0x1F) / 31.0f;
+      states->edgeColor[i][3] = 1.0f; // full alpha
+    }
+
+    // Upload fog density table to 1D texture
+    if (_enableFog) {
+      // Create 1D texture for fog denisty if not already created
+      if (_fogDensityTexture == nil) {
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                         width:32
+                                        height:1
+                                     mipmapped:NO];
+
+        desc.usage = MTLTextureUsageShaderRead;
+        _fogDensityTexture = [_device newTextureWithDescriptor:desc];
+      }
+
+      // Convert fog density table to normalized byte values
+      u8 fogDensityBytes[32];
+      for (int i = 0; i < 32; i++) {
+        // NDS stores fog density as 7-bit values, 127 = full fog
+        u8 density = renderState.fogDensityTable[i];
+        // Treat 127 as 128 (full fog)
+        fogDensityBytes[i] = (density >= 127) ? 255 : (density * 2);
+      }
+
+      // Upload to texture
+      [_fogDensityTexture replaceRegion:MTLRegionMake1D(0, 32)
+                            mipmapLevel:0
+                              withBytes:fogDensityBytes
+                            bytesPerRow:32];
+    }
+  }
+
   return RENDER3DERROR_NOERR;
 }
 
@@ -579,7 +689,69 @@ MetalRender::GetDepthStencilStateForPolygon(const POLY &thePoly,
   return _depthStencilStateOpaque;
 }
 
+unsigned long MetalRender::GetCullModeForPolygon(const POLY &thePoly) const {
+  // The Nintendo DS uses a 2-bit surface culling mode in bits 6-7:
+  // SurfaceCullingMode values:
+  //   0 = Cull front and back (polygon invisible, should never reach renderer)
+  //   1 = Cull front (only back surface visible)
+  //   2 = Cull back (only front surface visible)
+  //   3 = No culling (both surfaces visible)
+  //
+  // Metal's MTLCullMode:
+  //   MTLCullModeNone  = 0 (no culling)
+  //   MTLCullModeFront = 1 (cull front-facing primitives)
+  //   MTLCullModeBack  = 2 (cull back-facing primitives)
+
+  const u8 cullingMode = thePoly.attribute.SurfaceCullingMode;
+
+  switch (cullingMode) {
+  case 0:
+    // Cull front and back - this polygon should have been filtered out earlier,
+    // but if it reaches here, cull everything (use front culling as fallback)
+    return (unsigned long)MTLCullModeFront;
+
+  case 1:
+    // Cull front surface (BackSurface=0, FrontSurface=1 means hide front)
+    return (unsigned long)MTLCullModeFront;
+
+  case 2:
+    // Cull back surface (BackSurface=1, FrontSurface=0 means hide back)
+    return (unsigned long)MTLCullModeBack;
+
+  case 3:
+  default:
+    // No culling (both surfaces visible)
+    return (unsigned long)MTLCullModeNone;
+  }
+}
+
+unsigned long MetalRender::GetWindingOrderForPolygon(const CPoly &cPoly) const {
+  // The DS determines polygon facing based on the winding order of vertices in
+  // screen space. The CPoly structure contains a pre-calculated
+  // isPolyBackFacing flag that tells us whether this polygon is back-facing
+  // according to DS hardware.
+  //
+  // Metal's winding order:
+  // - MTLWindingClockwise: Front-facing if vertices are clockwise
+  // - MTLWindingCounterClockwise: Front-facing if vertices are
+  // counter-clockwise
+  //
+  // The DS considers a polygon front-facing if its vertices are ordered
+  // counter-clockwise in screen space. If isPolyBackFacing is true, the
+  // vertices are clockwise (back-facing). Since we want Metal to match the DS's
+  // front/back determination, we set the winding order to counter-clockwise.
+
+  // Always use counter-clockwise as front-facing to match DS hardware behavior
+  return (unsigned long)MTLWindingCounterClockwise;
+}
+
 Render3DError MetalRender::RenderGeometry() {
+
+  struct PolygonAttributes {
+    uint polygonID;
+    bool enableFog;
+  };
+
   // Exit if there are no polygons to render
   if (_clippedPolyCount == 0) {
     return RENDER3DERROR_NOERR;
@@ -596,6 +768,10 @@ Render3DError MetalRender::RenderGeometry() {
   // bind the pipeline state (shaders, blend state, etc.)
   [_renderCommandEncoder setRenderPipelineState:_pipelineState];
 
+  // Set the front-face winding order for all polygons
+  // The Nintendo DS uses counter-clockwise winding for front-facing polygons
+  [_renderCommandEncoder setFrontFacingWinding:MTLWindingCounterClockwise];
+
   // set the viewport (doing full screen, for now)
   MTLViewport viewport;
   viewport.originX = 0.0;
@@ -611,7 +787,8 @@ Render3DError MetalRender::RenderGeometry() {
 
   // The emulator separates polygons into two groups:
   // 1. Opaque polygons (0 to _clippedPolyOpaqueCount-1)
-  // 2. Translucent polygons (_clippedPolyOpaqueCount to _clippedPolyCount-1)
+  // 2. Translucent polygons (_clippedPolyOpaqueCount to
+  // _clippedPolyCount-1)
 
   size_t indexOffset = 0; // Track where we are in the index buffer
 
@@ -633,6 +810,12 @@ Render3DError MetalRender::RenderGeometry() {
       [_renderCommandEncoder
           setStencilReferenceValue:rawPoly.attribute.PolygonID];
 
+      // Set the cull mode for this polygon based on its surface culling
+      // attributes This enables proper front/back face culling as specified by
+      // the DS hardware
+      MTLCullMode cullMode = (MTLCullMode)GetCullModeForPolygon(rawPoly);
+      [_renderCommandEncoder setCullMode:cullMode];
+
       // set up the texture for this polygon
       this->SetupTexture(rawPoly, i);
 
@@ -645,11 +828,19 @@ Render3DError MetalRender::RenderGeometry() {
 
       // recall: quads were converted to triangles, so we need to draw the
       // polygon as a triangle
-      if (!GFX3D_IsPolyWireframe(rawPoly) &&
+      if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
           (rawPoly.vtxFormat == GFX3D_QUADS ||
            rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
-        indexCount = 6; // 3 doe first triangle, 3 for the second triangle
+        indexCount = 6; // 3 for first triangle, 3 for the second triangle
       }
+
+      PolygonAttributes polyAttr;
+      polyAttr.polygonID = rawPoly.attribute.PolygonID;
+      polyAttr.enableFog = rawPoly.attribute.Fog_Enable ? 1 : 0;
+
+      [_renderCommandEncoder setFragmentBytes:&polyAttr
+                                       length:sizeof(PolygonAttributes)
+                                      atIndex:0];
 
       // draw the polygon
       [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -683,6 +874,12 @@ Render3DError MetalRender::RenderGeometry() {
       u8 stencilReferenceValue = rawPoly.attribute.PolygonID | 0x40;
       [_renderCommandEncoder setStencilReferenceValue:stencilReferenceValue];
 
+      // Set the cull mode for this polygon based on its surface culling
+      // attributes This enables proper front/back face culling as specified by
+      // the DS hardware
+      MTLCullMode cullMode = (MTLCullMode)GetCullModeForPolygon(rawPoly);
+      [_renderCommandEncoder setCullMode:cullMode];
+
       // set up the texture for this polygon
       this->SetupTexture(rawPoly, i);
 
@@ -695,11 +892,19 @@ Render3DError MetalRender::RenderGeometry() {
 
       // recall: quads were converted to triangles, so we need to draw the
       // polygon as a triangle
-      if (!GFX3D_IsPolyWireframe(rawPoly) &&
+      if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
           (rawPoly.vtxFormat == GFX3D_QUADS ||
            rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
-        indexCount = 6; // 3 doe first triangle, 3 for the second triangle
+        indexCount = 6; // 3 for first triangle, 3 for the second triangle
       }
+
+      PolygonAttributes polyAttr;
+      polyAttr.polygonID = rawPoly.attribute.PolygonID;
+      polyAttr.enableFog = rawPoly.attribute.Fog_Enable ? 1 : 0;
+
+      [_renderCommandEncoder setFragmentBytes:&polyAttr
+                                       length:sizeof(PolygonAttributes)
+                                      atIndex:0];
 
       // draw the polygon
       [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -772,6 +977,42 @@ Render3DError MetalRender::InitializeRenderTargets(size_t width,
   _renderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionClear;
   _renderPassDescriptor.stencilAttachment.storeAction = MTLStoreActionStore;
   _renderPassDescriptor.stencilAttachment.clearStencil = 0;
+
+  // Create polygon ID texture for edge detection
+  // Uses r8uint format to store polygon IDs (0-63)
+  MTLTextureDescriptor *polyIDDesc = [MTLTextureDescriptor
+      texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Uint
+                                   width:width
+                                  height:height
+                               mipmapped:NO];
+  polyIDDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+  polyIDDesc.storageMode = MTLStorageModePrivate;
+  _polygonIDTexture = [_device newTextureWithDescriptor:polyIDDesc];
+
+  // Create fog attributes texture
+  // Use R8Unorm to store per-pixel fog enable flags
+  MTLTextureDescriptor *fogAttrDesc = [MTLTextureDescriptor
+      texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                   width:width
+                                  height:height
+                               mipmapped:NO];
+  fogAttrDesc.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+  fogAttrDesc.storageMode = MTLStorageModePrivate;
+  _fogAttributesTexture = [_device newTextureWithDescriptor:fogAttrDesc];
+
+  // Configure additional color attachments for postprocessing in render pass
+  // descriptor
+  _renderPassDescriptor.colorAttachments[1].texture = _polygonIDTexture;
+  _renderPassDescriptor.colorAttachments[1].loadAction = MTLLoadActionClear;
+  _renderPassDescriptor.colorAttachments[1].storeAction = MTLStoreActionStore;
+  _renderPassDescriptor.colorAttachments[1].clearColor =
+      MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+  _renderPassDescriptor.colorAttachments[2].texture = _fogAttributesTexture;
+  _renderPassDescriptor.colorAttachments[2].loadAction = MTLLoadActionClear;
+  _renderPassDescriptor.colorAttachments[2].storeAction = MTLStoreActionStore;
+  _renderPassDescriptor.colorAttachments[2].clearColor =
+      MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
 
   return RENDER3DERROR_NOERR;
 }
@@ -852,10 +1093,141 @@ Render3DError MetalRender::InitializeSamplerState() {
     return RENDER3DERROR_INVALID_BINDING;
   }
 
+  // Mirrored repeat with nearest neighbor filtering
+  // Used when textures have mirrored repeat enabled (flips at boundaries)
+  MTLSamplerDescriptor *mirrorNearestDesc = [MTLSamplerDescriptor new];
+  mirrorNearestDesc.minFilter = MTLSamplerMinMagFilterNearest;
+  mirrorNearestDesc.magFilter = MTLSamplerMinMagFilterNearest;
+  mirrorNearestDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+  mirrorNearestDesc.sAddressMode = MTLSamplerAddressModeMirrorRepeat;
+  mirrorNearestDesc.tAddressMode = MTLSamplerAddressModeMirrorRepeat;
+  mirrorNearestDesc.normalizedCoordinates = YES;
+
+  _samplerStateMirrorNearest =
+      [_device newSamplerStateWithDescriptor:mirrorNearestDesc];
+  if (_samplerStateMirrorNearest == nil) {
+    NSLog(@"Error: Failed to create mirror nearest sampler state");
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Mirrored repeat with linear filtering
+  // Used when textures have mirrored repeat enabled with smoothing
+  MTLSamplerDescriptor *mirrorLinearDesc = [MTLSamplerDescriptor new];
+  mirrorLinearDesc.minFilter = MTLSamplerMinMagFilterLinear;
+  mirrorLinearDesc.magFilter = MTLSamplerMinMagFilterLinear;
+  mirrorLinearDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+  mirrorLinearDesc.sAddressMode = MTLSamplerAddressModeMirrorRepeat;
+  mirrorLinearDesc.tAddressMode = MTLSamplerAddressModeMirrorRepeat;
+  mirrorLinearDesc.normalizedCoordinates = YES;
+
+  _samplerStateMirrorLinear =
+      [_device newSamplerStateWithDescriptor:mirrorLinearDesc];
+  if (_samplerStateMirrorLinear == nil) {
+    NSLog(@"Error: Failed to create mirror linear sampler state");
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
   return RENDER3DERROR_NOERR;
 }
 
 Render3DError MetalRender::PostprocessFramebuffer() {
+  // Early return if postprocessing is not needed
+  if (_clippedPolyCount == 0 || (!_enableEdgeMark && !_enableFog)) {
+    return RENDER3DERROR_NOERR;
+  }
+
+  // We need to encode post-processing passes
+  // this happens after the geometry is rendered and has filled the
+  // color/stencil/depth buffers
+
+  @autoreleasepool {
+    // Create a render pass, since we render back the same color texture, from
+    // depth/stencil buffers
+    MTLRenderPassDescriptor *postprocessPass =
+        [MTLRenderPassDescriptor renderPassDescriptor];
+
+    // Color attachment, read/write the same texture
+    postprocessPass.colorAttachments[0].texture = _colorTexture;
+    postprocessPass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+    postprocessPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+    // Create a render command encoder for the postprocessing pass
+    id<MTLRenderCommandEncoder> encoder =
+        [_commandBuffer renderCommandEncoderWithDescriptor:postprocessPass];
+    [encoder setLabel:@"DeSmuMe 3D Postprocessing Command Encoder"];
+
+    MTLViewport viewport = {
+        .originX = 0.0,
+        .originY = 0.0,
+        .width = _framebufferWidth,
+        .height = _framebufferHeight,
+        .znear = 0.0,
+        .zfar = 1.0,
+    };
+    [encoder setViewport:viewport];
+
+    // bind full-screen quad vertex buffer
+    [encoder setVertexBuffer:_postprocessVertexBuffer offset:0 atIndex:0];
+
+    // edge marking pass
+    if (_enableEdgeMark) {
+      [encoder pushDebugGroup:@"Edge Marking"];
+      [encoder setRenderPipelineState:_pipelineStateEdgeMark];
+
+      // Bind depth texture for edge depth testing
+      [encoder setFragmentTexture:_depthTexture atIndex:0];
+
+      // Bind polygon ID texture for edge detection
+      // NOTE: You need to render polygon IDs during geometry pass
+      // to a separate color attachment or use stencil buffer
+      [encoder setFragmentTexture:_polygonIDTexture atIndex:1];
+
+      // Bind render states (contains edge colors)
+      [encoder setFragmentBuffer:_renderStatesBuffer offset:0 atIndex:0];
+
+      // Draw fullscreen quad (triangle strip, 4 vertices)
+      [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                  vertexStart:0
+                  vertexCount:4];
+
+      [encoder popDebugGroup];
+    }
+
+    // fog pass
+    if (_enableFog) {
+      [encoder pushDebugGroup:@"Fog"];
+      [encoder setRenderPipelineState:_pipelineStateFog];
+
+      // Bind depth texture for fog depth calculation
+      [encoder setFragmentTexture:_depthTexture atIndex:0];
+
+      // Bind fog attributes texture (per-pixel fog enable flags)
+      // NOTE: This needs to be written during geometry pass
+      [encoder setFragmentTexture:_fogAttributesTexture atIndex:1];
+
+      // Bind fog density lookup table (1D texture)
+      [encoder setFragmentTexture:_fogDensityTexture atIndex:2];
+
+      // Bind render states (contains fog color, fog offset/step)
+      [encoder setFragmentBuffer:_renderStatesBuffer offset:0 atIndex:0];
+
+      // Set blend color to fog color for special fog blend mode
+      float fogR = _currentRenderStates.fogColor[0];
+      float fogG = _currentRenderStates.fogColor[1];
+      float fogB = _currentRenderStates.fogColor[2];
+      float fogA = _currentRenderStates.fogColor[3];
+      [encoder setBlendColorRed:fogR green:fogG blue:fogB alpha:fogA];
+
+      // Draw fullscreen quad
+      [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                  vertexStart:0
+                  vertexCount:4];
+
+      [encoder popDebugGroup];
+    }
+
+    [encoder endEncoding];
+  }
   return RENDER3DERROR_NOERR;
 }
 
@@ -875,23 +1247,25 @@ Render3DError MetalRender::ClearUsingImage(const u16 *__restrict colorBuffer,
                                            const u32 *__restrict depthBuffer,
                                            const u8 *__restrict fogBuffer,
                                            const u8 opaquePolyID) {
-  // MetalRender uses GPU-based rendering, so uploading the clear image would
-  // require:
+  // MetalRender uses GPU-based rendering, so uploading the clear image
+  // would require:
   // 1. Creating temporary Metal textures for color and depth data
   // 2. Converting format from RGBA5551/24-bit depth to Metal formats
   // 3. Using a blit encoder or full-screen quad to render the clear image
   // 4. Handling scaling if framebuffer size != native DS resolution
   //
-  // This is complex and the clear image feature (RearPlaneMode) is rarely used
-  // by games. For now, we return an error to fall back to ClearUsingValues,
-  // which provides a simple solid-color clear instead of the full image.
+  // This is complex and the clear image feature (RearPlaneMode) is rarely
+  // used by games. For now, we return an error to fall back to
+  // ClearUsingValues, which provides a simple solid-color clear instead of
+  // the full image.
   //
   // Games that rely on RearPlaneMode will have incorrect backgrounds (solid
-  // color instead of texture) until this is fully implemented. Known affected
-  // games:
+  // color instead of texture) until this is fully implemented. Known
+  // affected games:
   // - The Chronicles of Narnia: The Lion, the Witch and the Wardrobe
   // - Harry Potter and the Order of Phoenix
   // - Blazer Drive
+  //
   // - Sonic Chronicles: The Dark Brotherhood
   //
   // TODO: Implement full GPU-based clear image rendering for proper
@@ -958,38 +1332,53 @@ Render3DError MetalRender::SetupTexture(const POLY &thePoly,
   [_renderCommandEncoder setFragmentTexture:texID atIndex:0];
 
   // Select the appropriate sampler state based on the texture wrapping mode
-  // The DS suppoets different texture wrapping modes for each axis:
+  // The DS supports different texture wrapping modes for each axis:
   // 0: Clamp to edge (no repeat)
-  // 1: Repeat
-  // 2: Mirrored repeat
-  // 3: Flip
-  // The sampler state is stored in the texture object
-  // For simplicity, we check if both S and T use the same wrap mode
-  // A more complete implementation could create samplers for all combinations
+  // 1: Repeat (RepeatS/T_Enable = 1, MirroredRepeatS/T_Enable = 0)
+  // 2: Mirrored repeat (RepeatS/T_Enable = 1, MirroredRepeatS/T_Enable = 1)
+  // 3: Flip (not commonly used)
+  //
+  // The mirrored repeat mode interacts with the repeat enable flag:
+  // - If RepeatS_Enable is set AND MirroredRepeatS_Enable is set, use mirrored
+  // repeat for S
+  // - If RepeatT_Enable is set AND MirroredRepeatT_Enable is set, use mirrored
+  // repeat for T
+
   const bool repeatS = thePoly.texParam.RepeatS_Enable;
   const bool repeatT = thePoly.texParam.RepeatT_Enable;
-  // Note: MirroredRepeat modes are available but not currently used in this
-  // simplified implementation. A more complete implementation could create
-  // additional samplers for mirrored repeat modes.
+  const bool mirrorS = thePoly.texParam.MirroredRepeatS_Enable;
+  const bool mirrorT = thePoly.texParam.MirroredRepeatT_Enable;
 
-  // Determine if we should use repeat or clamp mode
-  // If either axis repeats, we use repeat mode
-  const bool useRepeat = (repeatS || repeatT);
+  // Determine the wrapping mode
+  // For simplicity, if either axis uses mirrored repeat, use mirror sampler
+  // If either axis uses regular repeat (but not mirror), use repeat sampler
+  // Otherwise use clamp sampler
+  const bool useMirror = (repeatS && mirrorS) || (repeatT && mirrorT);
+  const bool useRepeat = !useMirror && (repeatS || repeatT);
 
   // Determine if we should use linear or nearest filtering
   // _enableTextureSmoothing comes from the emulator settings
   const bool useLinearFiltering = this->_enableTextureSmoothing;
 
-  // Select the appropriate sampler
+  // Select the appropriate sampler based on wrap mode and filtering
   id<MTLSamplerState> selectedSampler = nil;
 
-  if (useRepeat) {
+  if (useMirror) {
+    // Use mirrored repeat sampler
+    if (useLinearFiltering) {
+      selectedSampler = _samplerStateMirrorLinear;
+    } else {
+      selectedSampler = _samplerStateMirrorNearest;
+    }
+  } else if (useRepeat) {
+    // Use regular repeat sampler
     if (useLinearFiltering) {
       selectedSampler = _samplerStateRepeatLinear;
     } else {
       selectedSampler = _samplerStateRepeatNearest;
     }
   } else {
+    // Use clamp sampler
     if (useLinearFiltering) {
       selectedSampler = _samplerStateClampLinear;
     } else {
@@ -1008,7 +1397,8 @@ Render3DError MetalRender::SetupTexture(const POLY &thePoly,
 }
 
 Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
-  // calculate how much the viewport is scaled from the native framebuffer size
+  // calculate how much the viewport is scaled from the native framebuffer
+  // size
   const float wScalar = _framebufferWidth / (float)GPU_FRAMEBUFFER_NATIVE_WIDTH;
   const float hScalar =
       _framebufferHeight / (float)GPU_FRAMEBUFFER_NATIVE_HEIGHT;
@@ -1020,7 +1410,7 @@ Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
   // vertically
   // Metal uses top-left origin, but the NDS viewport is bottom-left origin
   // so we need to flip the Y-coordinate, then apply the scaling factor
-  metalViewport.originY = -(viewport.y + (192 - viewport.height)) * hScalar;
+  metalViewport.originY = (-viewport.y + (192 - viewport.height)) * hScalar;
   metalViewport.width = viewport.width * wScalar;
   metalViewport.height = viewport.height * hScalar;
 
@@ -1032,6 +1422,142 @@ Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
 
   // Set the viewport
   [_renderCommandEncoder setViewport:metalViewport];
+
+  return RENDER3DERROR_NOERR;
+}
+
+Render3DError MetalRender::InitializePostprocessPipelines() {
+  // Load the default Metal library, as this will automatically load the
+  // shaders.
+  id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
+  if (defaultLibrary == nil) {
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Get the vertex function from the library
+  id<MTLFunction> vertexFunction =
+      [defaultLibrary newFunctionWithName:@"postprocessVertex"];
+  if (vertexFunction == nil) {
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Get the fragment function from the library
+  id<MTLFunction> fragmentFunction =
+      [defaultLibrary newFunctionWithName:@"fogFragment"];
+  if (fragmentFunction == nil) {
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Get the edge marking fragment function from the library
+  id<MTLFunction> edgeMarkFragmentFunction =
+      [defaultLibrary newFunctionWithName:@"edgeMarkFragment"];
+  if (edgeMarkFragmentFunction == nil) {
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Edge marking pipeline
+  MTLRenderPipelineDescriptor *edgeDesc = [MTLRenderPipelineDescriptor new];
+  edgeDesc.label = @"Edge Marking Pipeline";
+  edgeDesc.vertexFunction = vertexFunction;
+  edgeDesc.fragmentFunction = edgeMarkFragmentFunction;
+
+  // Configure color attachments, blend edge colors onto the rendered image
+  edgeDesc.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+  edgeDesc.colorAttachments[0].blendingEnabled = YES;
+
+  // Blend mode, add edge color on top, preserve the max alpha
+  edgeDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+  edgeDesc.colorAttachments[0].destinationRGBBlendFactor =
+      MTLBlendFactorOneMinusSourceAlpha;
+  edgeDesc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+  edgeDesc.colorAttachments[0].sourceAlphaBlendFactor =
+      MTLBlendFactorSourceAlpha;
+  edgeDesc.colorAttachments[0].destinationAlphaBlendFactor =
+      MTLBlendFactorDestinationAlpha;
+  edgeDesc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationMax;
+
+  // Vertex desc for fullscreen quad
+  MTLVertexDescriptor *postprocessVertexDesc = [MTLVertexDescriptor new];
+  // Position (x, y)
+  postprocessVertexDesc.attributes[0].format = MTLVertexFormatFloat2;
+  postprocessVertexDesc.attributes[0].bufferIndex = 0;
+  postprocessVertexDesc.attributes[0].offset = 0;
+
+  // TexCoord (u, v)
+  postprocessVertexDesc.attributes[1].format = MTLVertexFormatFloat2;
+  postprocessVertexDesc.attributes[1].bufferIndex = 0;
+  postprocessVertexDesc.attributes[1].offset = 2 * sizeof(float);
+
+  // Stride, 4 floats per vertex
+  postprocessVertexDesc.layouts[0].stride = 4 * sizeof(float);
+  postprocessVertexDesc.layouts[0].stepFunction =
+      MTLVertexStepFunctionPerVertex;
+
+  edgeDesc.vertexDescriptor = postprocessVertexDesc;
+
+  NSError *error = nil;
+  _pipelineStateEdgeMark =
+      [_device newRenderPipelineStateWithDescriptor:edgeDesc error:&error];
+  if (_pipelineStateEdgeMark == nil) {
+    NSLog(@"Failed to create edge mark pipeline: %@", error);
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  // Fog rendering pipeline
+  MTLRenderPipelineDescriptor *fogDesc = [MTLRenderPipelineDescriptor new];
+  fogDesc.label = @"Fog Rendering Pipeline";
+  fogDesc.vertexFunction = vertexFunction;
+  fogDesc.fragmentFunction = fragmentFunction;
+
+  // Color attachment - blend fog color with scene
+  fogDesc.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+  fogDesc.colorAttachments[0].blendingEnabled = YES;
+
+  // Special fog blend mode from the NDS hardware
+  // RGB: constantColor * (1 - srcColor)
+  // Alpha: constantAlpha * (1 - srcAlpha)
+  fogDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorBlendColor;
+  fogDesc.colorAttachments[0].destinationRGBBlendFactor =
+      MTLBlendFactorOneMinusSourceColor;
+  fogDesc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+  fogDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorBlendAlpha;
+  fogDesc.colorAttachments[0].destinationAlphaBlendFactor =
+      MTLBlendFactorOneMinusSourceAlpha;
+  fogDesc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+
+  fogDesc.vertexDescriptor = postprocessVertexDesc;
+
+  _pipelineStateFog = [_device newRenderPipelineStateWithDescriptor:fogDesc
+                                                              error:&error];
+
+  if (_pipelineStateFog == nil) {
+    NSLog(@"Failed to create fog pipeline: %@", error);
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+
+  return RENDER3DERROR_NOERR;
+}
+
+Render3DError MetalRender::CreateFullscreenQuad() {
+  // Fullscreen quad vertices in NDC space (-1 to 1)
+  // Format: position (x, y), texCoord (u, v)
+  float quadVertices[] = {
+      // Positions    // TexCoords
+      -1.0f, 1.0f,  0.0f, 0.0f, // Top-left
+      1.0f,  1.0f,  1.0f, 0.0f, // Top-right
+      -1.0f, -1.0f, 0.0f, 1.0f, // Bottom-left
+      1.0f,  -1.0f, 1.0f, 1.0f  // Bottom-right
+  };
+
+  _postprocessVertexBuffer =
+      [_device newBufferWithBytes:quadVertices
+                           length:sizeof(quadVertices)
+                          options:MTLResourceStorageModeShared];
+
+  if (_postprocessVertexBuffer == nil) {
+    NSLog(@"Error: Failed to create fullscreen quad vertex buffer");
+    return RENDER3DERROR_INVALID_BINDING;
+  }
 
   return RENDER3DERROR_NOERR;
 }
@@ -1272,7 +1798,8 @@ void MetalRenderColorOut::UnbindRenderer(const size_t idxRead) {
       // Bytes per row in the destination buffer
       NSUInteger bytesPerRow = _framebufferWidth * sizeof(Color4u8);
 
-      // Copy the texture data from the GPU memory to the CPU accessible buffer
+      // Copy the texture data from the GPU memory to the CPU accessible
+      // buffer
       [_colorTexture getBytes:_readbackBuffer[idxRead]
                   bytesPerRow:bytesPerRow
                    fromRegion:region
@@ -1306,7 +1833,8 @@ Render3DError MetalRenderColorOut::SetSize(size_t w, size_t h) {
   Color4u8 *newMasterBuffer32 = (Color4u8 *)malloc_aligned(newSize32 * 2, 64);
 
   if (newMasterBuffer32 == nullptr) {
-    // Allocation failed - return error without modifying any member variables
+    // Allocation failed - return error without modifying any member
+    // variables
     NSLog(@"MetalRenderColorOut: Failed to allocate buffer for size %zux%zu", w,
           h);
     return RENDER3DERROR_INVALID_BUFFER;
@@ -1387,8 +1915,8 @@ void MetalRenderColorOut::_ConvertColorFormat(Color4u8 *buffer,
     Color4u8 pixel = buffer[i];
 
     // Convert 8-bit channels to 6-bit channels and pack
-    // DS format: bits 0-5 = blue, bits 6-11 = green, bits 12-17 = red, 18-23 =
-    // alpha
+    // DS format: bits 0-5 = blue, bits 6-11 = green, bits 12-17 = red,
+    // 18-23 = alpha
     u8 r6 = (pixel.r >> 2); // 8 bits -> 6 bits (divide by 4)
     u8 g6 = (pixel.g >> 2);
     u8 b6 = (pixel.b >> 2);
