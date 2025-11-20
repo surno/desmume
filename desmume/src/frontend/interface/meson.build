@@ -218,6 +218,32 @@ elif get_option('opengl')
   endif
 endif
 
+# Add Metal support for macOS
+if get_option('metal')
+  if host_machine.system() == 'darwin'
+    # Add Metal and Foundation frameworks
+    dep_metal = dependency('appleframeworks', modules: ['Metal', 'Foundation'])
+    dependencies += dep_metal
+    add_global_arguments('-DENABLE_METAL', language: ['c', 'cpp'])
+    
+    # Compile Metal shaders into a library
+    metal_shader = custom_target('metal_shaders',
+      input: '../../MetalShaders.metal',
+      output: 'default.metallib',
+      command: ['xcrun', '-sdk', 'macosx', 'metal', '-c', '@INPUT@', '-o', 'MetalShaders.air', '&&',
+                'xcrun', '-sdk', 'macosx', 'metallib', 'MetalShaders.air', '-o', '@OUTPUT@'],
+      install: false,
+    )
+    
+    # Add Metal renderer source
+    libdesmume_src += ['../../MetalRender.mm']
+    
+    message('Metal renderer enabled')
+  else
+    error('Metal renderer is only available on macOS')
+  endif
+endif
+
 if dep_openal.found()
   dependencies += dep_openal
   libdesmume_src += [

@@ -3807,6 +3807,17 @@
 		ABFEA8CC1BB4EC1100B08C25 /* smooth.c in Sources */ = {isa = PBXBuildFile; fileRef = ABFEA7E41BB4EC1000B08C25 /* smooth.c */; };
 		ABFEA8E81BB4FB3100B08C25 /* truetype.c in Sources */ = {isa = PBXBuildFile; fileRef = ABFEA7E61BB4EC1000B08C25 /* truetype.c */; };
 		ABFEA8EA1BB4FB3200B08C25 /* truetype.c in Sources */ = {isa = PBXBuildFile; fileRef = ABFEA7E61BB4EC1000B08C25 /* truetype.c */; };
+		EA68754E2ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA68754F2ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875502ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875512ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875522ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875532ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875542ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875552ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875562ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875572ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
+		EA6875582ECEDE9B00A997EE /* MetalShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */; };
 		EA7028C62ECEBC7A000601E7 /* MetalRender.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA7028C52ECEBC7A000601E7 /* MetalRender.mm */; };
 		EA7028C72ECEBC7A000601E7 /* MetalRender.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA7028C52ECEBC7A000601E7 /* MetalRender.mm */; };
 		EA7028C82ECEBC7A000601E7 /* MetalRender.mm in Sources */ = {isa = PBXBuildFile; fileRef = EA7028C52ECEBC7A000601E7 /* MetalRender.mm */; };
@@ -4655,6 +4666,7 @@
 		ABFEA7C81BB4EC1000B08C25 /* sfnt.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = sfnt.c; path = sfnt/sfnt.c; sourceTree = "<group>"; };
 		ABFEA7E41BB4EC1000B08C25 /* smooth.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = smooth.c; path = smooth/smooth.c; sourceTree = "<group>"; };
 		ABFEA7E61BB4EC1000B08C25 /* truetype.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = truetype.c; path = truetype/truetype.c; sourceTree = "<group>"; };
+		EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MetalShaders.metal; sourceTree = "<group>"; };
 		EA7028C42ECEBC7A000601E7 /* MetalRender.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MetalRender.h; sourceTree = "<group>"; };
 		EA7028C52ECEBC7A000601E7 /* MetalRender.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MetalRender.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -5766,6 +5778,7 @@
 		ABC572B7134592D900E7B0B1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				EA68754D2ECEDE9B00A997EE /* MetalShaders.metal */,
 				EA7028C42ECEBC7A000601E7 /* MetalRender.h */,
 				EA7028C52ECEBC7A000601E7 /* MetalRender.mm */,
 				ABD1FEFF1345AC9B00AF11D1 /* addons */,
@@ -8121,6 +8134,7 @@
 				8C43E7FE27E3CD0100A35F65 /* ftdebug.c in Sources */,
 				8C43E7FF27E3CD0100A35F65 /* ROMReader.cpp in Sources */,
 				8C43E80027E3CD0100A35F65 /* rtc.cpp in Sources */,
+				EA6875522ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				8C43E80127E3CD0100A35F65 /* saves.cpp in Sources */,
 				8C43E80227E3CD0100A35F65 /* pshinter.c in Sources */,
 				8C43E80327E3CD0100A35F65 /* slot1.cpp in Sources */,
@@ -8304,6 +8318,7 @@
 				8C43E94427E3CD4C00A35F65 /* fatdir.cpp in Sources */,
 				8C43E94527E3CD4C00A35F65 /* fatfile.cpp in Sources */,
 				8C43E94627E3CD4C00A35F65 /* FIFO.cpp in Sources */,
+				EA6875542ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				8C43E94727E3CD4C00A35F65 /* FIFOSampleBuffer.cpp in Sources */,
 				8C43E94827E3CD4C00A35F65 /* file_allocation_table.cpp in Sources */,
 				8C43E94927E3CD4C00A35F65 /* slot1_retail_mcrom_debug.cpp in Sources */,
@@ -8538,6 +8553,7 @@
 				8CCD846F27E40B730024BDD5 /* ftinit.c in Sources */,
 				8CCD847027E40B730024BDD5 /* slot2_mpcf.cpp in Sources */,
 				8CCD847127E40B730024BDD5 /* OGLDisplayOutput.cpp in Sources */,
+				EA6875502ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				8CCD847227E40B730024BDD5 /* slot2_none.cpp in Sources */,
 				8CCD847327E40B730024BDD5 /* slot2_paddle.cpp in Sources */,
 				8CCD847427E40B730024BDD5 /* slot2_piano.cpp in Sources */,
@@ -8820,6 +8836,7 @@
 				AB36C83D27F2C8AE00C763C8 /* ftdebug.c in Sources */,
 				AB36C83E27F2C8AE00C763C8 /* fttype1.c in Sources */,
 				AB36C83F27F2C8AE00C763C8 /* arm_jit.cpp in Sources */,
+				EA68754E2ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				AB64DC4B2E78E3710092D8FC /* cgl_3Demu.cpp in Sources */,
 				AB36C84027F2C8AE00C763C8 /* troubleshootingWindowDelegate.mm in Sources */,
 				AB36C84127F2C8AE00C763C8 /* assembler.cpp in Sources */,
@@ -8913,6 +8930,7 @@
 				AB79005F215B84E50082AE82 /* debug.cpp in Sources */,
 				AB790060215B84E50082AE82 /* ftlcdfil.c in Sources */,
 				AB790061215B84E50082AE82 /* decrypt.cpp in Sources */,
+				EA6875572ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				AB790062215B84E50082AE82 /* type1.c in Sources */,
 				AB790063215B84E50082AE82 /* directory.cpp in Sources */,
 				AB790064215B84E50082AE82 /* Disassembler.cpp in Sources */,
@@ -9279,6 +9297,7 @@
 				AB790234215B84F20082AE82 /* slot1_retail_mcrom.cpp in Sources */,
 				AB790235215B84F20082AE82 /* xstring.cpp in Sources */,
 				AB790236215B84F20082AE82 /* main.m in Sources */,
+				EA6875562ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				AB790237215B84F20082AE82 /* cocoa_cheat.mm in Sources */,
 				AB790238215B84F20082AE82 /* cocoa_core.mm in Sources */,
 				AB790239215B84F20082AE82 /* cocoa_file.mm in Sources */,
@@ -9388,6 +9407,7 @@
 				AB796CFC15CDCBA200C59155 /* debug.cpp in Sources */,
 				ABFEA82E1BB4EC1100B08C25 /* ftlcdfil.c in Sources */,
 				AB796CFD15CDCBA200C59155 /* decrypt.cpp in Sources */,
+				EA6875512ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				ABA7316E1BB51FDC00B26147 /* type1.c in Sources */,
 				AB796CFE15CDCBA200C59155 /* directory.cpp in Sources */,
 				AB796CFF15CDCBA200C59155 /* Disassembler.cpp in Sources */,
@@ -9754,6 +9774,7 @@
 				AB8F3CD41A53AC2600A80BF6 /* slot1_retail_mcrom.cpp in Sources */,
 				AB8F3CD51A53AC2600A80BF6 /* xstring.cpp in Sources */,
 				AB8F3CD61A53AC2600A80BF6 /* main.m in Sources */,
+				EA68754F2ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				AB8F3CD71A53AC2600A80BF6 /* cocoa_cheat.mm in Sources */,
 				AB8F3CD81A53AC2600A80BF6 /* cocoa_core.mm in Sources */,
 				AB8F3CD91A53AC2600A80BF6 /* cocoa_file.mm in Sources */,
@@ -9992,6 +10013,7 @@
 				AB9038BA17C5ED2200F410BD /* slot1comp_rom.cpp in Sources */,
 				ABB3C6D51501C04F00E0C22E /* thumb_instructions.cpp in Sources */,
 				AB2EE13317D57F5000F68622 /* fsnitro.cpp in Sources */,
+				EA6875582ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				ABB3C6D61501C04F00E0C22E /* version.cpp in Sources */,
 				AB93384A28132CD000851FEA /* OEBuildInterface.cpp in Sources */,
 				AB35BD921DEBF41800844310 /* encoding_utf.c in Sources */,
@@ -10043,6 +10065,7 @@
 				ABC858B028273FEE00A03EA9 /* Disassembler.cpp in Sources */,
 				ABC858B128273FEE00A03EA9 /* disc.cpp in Sources */,
 				ABC858B228273FEE00A03EA9 /* dlditool.cpp in Sources */,
+				EA6875552ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				ABC858B328273FEE00A03EA9 /* driver.cpp in Sources */,
 				ABC858B428273FEE00A03EA9 /* emufat.cpp in Sources */,
 				ABC858B528273FEE00A03EA9 /* emufile.cpp in Sources */,
@@ -10280,6 +10303,7 @@
 				ABD2CD6426E05CB000FB15F7 /* Disassembler.cpp in Sources */,
 				ABD2CD6526E05CB000FB15F7 /* disc.cpp in Sources */,
 				ABD2CD6626E05CB000FB15F7 /* dlditool.cpp in Sources */,
+				EA6875532ECEDE9B00A997EE /* MetalShaders.metal in Sources */,
 				ABD2CD6726E05CB000FB15F7 /* driver.cpp in Sources */,
 				ABD2CD6826E05CB000FB15F7 /* emufat.cpp in Sources */,
 				ABD2CD6926E05CB000FB15F7 /* emufile.cpp in Sources */,
