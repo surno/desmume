@@ -205,9 +205,13 @@ Render3DError MetalRender::InitResources() {
 }
 
 MetalRender::~MetalRender() {
-  // Clean up - ARC will handle the rest
-  _device = nil;
+  // Release objects that were explicitly retained in InitResources()
+  [_commandQueue release];
   _commandQueue = nil;
+  [_device release];
+  _device = nil;
+  
+  // These are either autoreleased or nil (if InitResources failed partway)
   _commandBuffer = nil;
   _pipelineState = nil;
   _renderCommandEncoder = nil;
@@ -486,44 +490,57 @@ ClipperMode MetalRender::GetPreferredPolygonClippingMode() const {
 }
 
 Render3DError MetalRender::InitializePipelineState() {
-NSError *error = nil;
+  @autoreleasepool {
+    NSError *error = nil;
+    
+    // Track if we own the library (need to release it)
+    bool shouldReleaseLibrary = false;
+    
+    // IMPORTANT: Load from shared library instead of creating new one
+    id<MTLLibrary> defaultLibrary = nil;
+    
+    if (SharedMetalData != nil)
+    {
+        // Use the shared library from the display system (borrowed reference)
+        defaultLibrary = [SharedMetalData defaultLibrary];
+        shouldReleaseLibrary = false;
+    }
+    else
+    {
+        // Fallback: load our own library (owned reference, +1 retain count)
+        defaultLibrary = [_device newDefaultLibrary];
+        shouldReleaseLibrary = true;
+    }
 
-  // IMPORTANT: Load from shared library instead of creating new one
-  id<MTLLibrary> defaultLibrary = nil;
-  
-  if (SharedMetalData != nil)
-  {
-      // Use the shared library from the display system
-      defaultLibrary = [SharedMetalData defaultLibrary];
-  }
-  else
-  {
-      // Fallback: load our own library
-      defaultLibrary = [_device newDefaultLibrary];
-  }
+    if (defaultLibrary == nil) {
+      printf("Metal: Failed to load Metal library\n");
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  if (defaultLibrary == nil) {
-    printf("Metal: Failed to load Metal library\n");
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    // Get the vertex function from the library (+1 retain count)
+    id<MTLFunction> vertexFunction =
+        [defaultLibrary newFunctionWithName:@"vertexShader"];
+    if (vertexFunction == nil) {
+      printf("Metal 3D: ERROR - vertexShader not found in library!\n");
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  // Get the vertex function from the library
-  id<MTLFunction> vertexFunction =
-      [defaultLibrary newFunctionWithName:@"vertexShader"];
-  if (vertexFunction == nil) {
-    printf("Metal 3D: ERROR - vertexShader not found in library!\n");
-    return RENDER3DERROR_INVALID_BINDING;
-  }
-
-  // Get the fragment function from the library
-  id<MTLFunction> fragmentFunction =
-      [defaultLibrary newFunctionWithName:@"fragmentShaderTextured"];
-  if (fragmentFunction == nil) {
-    printf("Metal 3D: ERROR - fragmentShaderTextured not found in library!\n");
-    return RENDER3DERROR_INVALID_BINDING;
-  }
-  // Create the vertex descriptor, describes the layout of the vertex data
-  MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
+    // Get the fragment function from the library (+1 retain count)
+    id<MTLFunction> fragmentFunction =
+        [defaultLibrary newFunctionWithName:@"fragmentShaderTextured"];
+    if (fragmentFunction == nil) {
+      printf("Metal 3D: ERROR - fragmentShaderTextured not found in library!\n");
+      [vertexFunction release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
+      return RENDER3DERROR_INVALID_BINDING;
+    }
+    // Create the vertex descriptor, describes the layout of the vertex data
+    MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
 
   // Position (X, Y, Z, W)
   vertexDescriptor.attributes[0].format = MTLVertexFormatFloat4;
@@ -594,28 +611,42 @@ NSError *error = nil;
   pipelineDesc.colorAttachments[2].pixelFormat =
       MTLPixelFormatR8Unorm; // Fog enable flag
 
-  // create the pipeline state
-  _pipelineState = [_device newRenderPipelineStateWithDescriptor:pipelineDesc
-                                                           error:&error];
-  if (_pipelineState == nil) {
-    if (error != nil) {
-      NSLog(@"Error creating pipeline state: %@", error.localizedDescription);
+    // create the pipeline state
+    _pipelineState = [_device newRenderPipelineStateWithDescriptor:pipelineDesc
+                                                             error:&error];
+    if (_pipelineState == nil) {
+      if (error != nil) {
+        NSLog(@"Error creating pipeline state: %@", error.localizedDescription);
+      }
+      [vertexFunction release];
+      [fragmentFunction release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
+      return RENDER3DERROR_INVALID_BINDING;
     }
-    return RENDER3DERROR_INVALID_BINDING;
-  }
 
-  return RENDER3DERROR_NOERR;
+    // Release temporary objects (descriptors auto-released by pool)
+    [vertexFunction release];
+    [fragmentFunction release];
+    if (shouldReleaseLibrary) {
+      [defaultLibrary release];
+    }
+
+    return RENDER3DERROR_NOERR;
+  } // @autoreleasepool
 }
 
 Render3DError MetalRender::InitializeDepthStencilState() {
-  // The Nintendo DS needs different depth/stencil configurations for:
-  // - Opaque polygons (depth write ON, depth test LESS)
-  // - Translucent polygons (depth write OFF, depth test LESS)
-  // - Depth-equal polygons (depth test EQUAL)
-  // - Shadow polygons (special stencil operations)
+  @autoreleasepool {
+    // The Nintendo DS needs different depth/stencil configurations for:
+    // - Opaque polygons (depth write ON, depth test LESS)
+    // - Translucent polygons (depth write OFF, depth test LESS)
+    // - Depth-equal polygons (depth test EQUAL)
+    // - Shadow polygons (special stencil operations)
 
-  // create depth stencil descriptor for opaque polygons
-  MTLDepthStencilDescriptor *opaqueDesc = [MTLDepthStencilDescriptor new];
+    // create depth stencil descriptor for opaque polygons
+    MTLDepthStencilDescriptor *opaqueDesc = [MTLDepthStencilDescriptor new];
   opaqueDesc.depthCompareFunction = MTLCompareFunctionLess;
   opaqueDesc.depthWriteEnabled = YES;
 
@@ -736,14 +767,15 @@ Render3DError MetalRender::InitializeDepthStencilState() {
   shadowPass2Desc.frontFaceStencil = shadowPass2Stencil;
   shadowPass2Desc.backFaceStencil = shadowPass2Stencil;
 
-  _depthStencilStateShadowPass2 =
-      [_device newDepthStencilStateWithDescriptor:shadowPass2Desc];
-  if (_depthStencilStateShadowPass2 == nil) {
-    NSLog(@"Error: Failed to create shadow pass 2 depth/stencil state");
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    _depthStencilStateShadowPass2 =
+        [_device newDepthStencilStateWithDescriptor:shadowPass2Desc];
+    if (_depthStencilStateShadowPass2 == nil) {
+      NSLog(@"Error: Failed to create shadow pass 2 depth/stencil state");
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  return RENDER3DERROR_NOERR;
+    return RENDER3DERROR_NOERR;
+  } // @autoreleasepool
 }
 
 Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
@@ -1501,16 +1533,17 @@ Render3DError MetalRender::InitializeRenderTargets(size_t width,
 }
 
 Render3DError MetalRender::InitializeSamplerState() {
-  // Create sampler descriptors for different texture wrapping and filtering
-  // modes
-  // The Nintendo DS supports various texture wrapping modes:
-  // - Clamp to edge (no repeat)
-  // - Repeat (wrap around)
-  // - Mirrored repeat (flip at edges)
+  @autoreleasepool {
+    // Create sampler descriptors for different texture wrapping and filtering
+    // modes
+    // The Nintendo DS supports various texture wrapping modes:
+    // - Clamp to edge (no repeat)
+    // - Repeat (wrap around)
+    // - Mirrored repeat (flip at edges)
 
-  // Clamp to edge with nearest filtering
-  // used when polygon disables texture repeat (UI elements, sprites, etc.)
-  MTLSamplerDescriptor *clampNearestDesc = [MTLSamplerDescriptor new];
+    // Clamp to edge with nearest filtering
+    // used when polygon disables texture repeat (UI elements, sprites, etc.)
+    MTLSamplerDescriptor *clampNearestDesc = [MTLSamplerDescriptor new];
   clampNearestDesc.minFilter = MTLSamplerMinMagFilterNearest;
   clampNearestDesc.magFilter = MTLSamplerMinMagFilterNearest;
   clampNearestDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
@@ -1627,15 +1660,16 @@ Render3DError MetalRender::InitializeSamplerState() {
     return RENDER3DERROR_INVALID_BINDING;
   }
   
-  // Fill the texture with white (255, 255, 255, 255)
-  uint32_t whitePixel = 0xFFFFFFFF;
-  MTLRegion region = MTLRegionMake2D(0, 0, 1, 1);
-  [_dummyWhiteTexture replaceRegion:region
-                        mipmapLevel:0
-                          withBytes:&whitePixel
-                        bytesPerRow:4];
+    // Fill the texture with white (255, 255, 255, 255)
+    uint32_t whitePixel = 0xFFFFFFFF;
+    MTLRegion region = MTLRegionMake2D(0, 0, 1, 1);
+    [_dummyWhiteTexture replaceRegion:region
+                          mipmapLevel:0
+                            withBytes:&whitePixel
+                          bytesPerRow:4];
 
-  return RENDER3DERROR_NOERR;
+    return RENDER3DERROR_NOERR;
+  } // @autoreleasepool
 }
 
 Render3DError MetalRender::PostprocessFramebuffer() {
@@ -1956,33 +1990,40 @@ Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
 }
 
 Render3DError MetalRender::InitializePostprocessPipelines() {
-  // Load the default Metal library, as this will automatically load the
-  // shaders.
-  id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
-  if (defaultLibrary == nil) {
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+  @autoreleasepool {
+    // Load the default Metal library, as this will automatically load the
+    // shaders. (+1 retain count, must release)
+    id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
+    if (defaultLibrary == nil) {
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  // Get the vertex function from the library
-  id<MTLFunction> vertexFunction =
-      [defaultLibrary newFunctionWithName:@"postprocessVertex"];
-  if (vertexFunction == nil) {
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    // Get the vertex function from the library (+1 retain count, must release)
+    id<MTLFunction> vertexFunction =
+        [defaultLibrary newFunctionWithName:@"postprocessVertex"];
+    if (vertexFunction == nil) {
+      [defaultLibrary release];
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  // Get the fragment function from the library
-  id<MTLFunction> fragmentFunction =
-      [defaultLibrary newFunctionWithName:@"fogFragment"];
-  if (fragmentFunction == nil) {
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    // Get the fragment function from the library (+1 retain count, must release)
+    id<MTLFunction> fragmentFunction =
+        [defaultLibrary newFunctionWithName:@"fogFragment"];
+    if (fragmentFunction == nil) {
+      [vertexFunction release];
+      [defaultLibrary release];
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  // Get the edge marking fragment function from the library
-  id<MTLFunction> edgeMarkFragmentFunction =
-      [defaultLibrary newFunctionWithName:@"edgeMarkFragment"];
-  if (edgeMarkFragmentFunction == nil) {
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    // Get the edge marking fragment function from the library (+1 retain count, must release)
+    id<MTLFunction> edgeMarkFragmentFunction =
+        [defaultLibrary newFunctionWithName:@"edgeMarkFragment"];
+    if (edgeMarkFragmentFunction == nil) {
+      [fragmentFunction release];
+      [vertexFunction release];
+      [defaultLibrary release];
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
   // Edge marking pipeline
   MTLRenderPipelineDescriptor *edgeDesc = [MTLRenderPipelineDescriptor new];
@@ -2024,13 +2065,17 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
 
   edgeDesc.vertexDescriptor = postprocessVertexDesc;
 
-  NSError *error = nil;
-  _pipelineStateEdgeMark =
-      [_device newRenderPipelineStateWithDescriptor:edgeDesc error:&error];
-  if (_pipelineStateEdgeMark == nil) {
-    NSLog(@"Failed to create edge mark pipeline: %@", error);
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    NSError *error = nil;
+    _pipelineStateEdgeMark =
+        [_device newRenderPipelineStateWithDescriptor:edgeDesc error:&error];
+    if (_pipelineStateEdgeMark == nil) {
+      NSLog(@"Failed to create edge mark pipeline: %@", error);
+      [edgeMarkFragmentFunction release];
+      [fragmentFunction release];
+      [vertexFunction release];
+      [defaultLibrary release];
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
   // Fog rendering pipeline
   MTLRenderPipelineDescriptor *fogDesc = [MTLRenderPipelineDescriptor new];
@@ -2056,15 +2101,26 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
 
   fogDesc.vertexDescriptor = postprocessVertexDesc;
 
-  _pipelineStateFog = [_device newRenderPipelineStateWithDescriptor:fogDesc
-                                                              error:&error];
+    _pipelineStateFog = [_device newRenderPipelineStateWithDescriptor:fogDesc
+                                                                error:&error];
 
-  if (_pipelineStateFog == nil) {
-    NSLog(@"Failed to create fog pipeline: %@", error);
-    return RENDER3DERROR_INVALID_BINDING;
-  }
+    if (_pipelineStateFog == nil) {
+      NSLog(@"Failed to create fog pipeline: %@", error);
+      [edgeMarkFragmentFunction release];
+      [fragmentFunction release];
+      [vertexFunction release];
+      [defaultLibrary release];
+      return RENDER3DERROR_INVALID_BINDING;
+    }
 
-  return RENDER3DERROR_NOERR;
+    // Release temporary objects (descriptors auto-released by pool)
+    [edgeMarkFragmentFunction release];
+    [fragmentFunction release];
+    [vertexFunction release];
+    [defaultLibrary release];
+
+    return RENDER3DERROR_NOERR;
+  } // @autoreleasepool
 }
 
 Render3DError MetalRender::CreateFullscreenQuad() {
@@ -2217,6 +2273,8 @@ void MetalTexture::Load(void *targetBuffer) {
   // Create the Metal texture
   _texID = [_device newTextureWithDescriptor:texDescriptor];
   if (_texID == nil) {
+    // Allocation failed - mark for retry 
+    this->_isLoadNeeded = true;
     return;
   }
 

@@ -32,6 +32,7 @@
 
 #include "cgl_3Demu.h"
 
+
 #ifdef PORT_VERSION_OS_X_APP
 #import "userinterface/CocoaDisplayView.h"
 #import "userinterface/MacOGLDisplayView.h"
@@ -141,19 +142,28 @@ GPU3DInterface *core3DList[GPU_3D_RENDERER_COUNT + 1] = {
   fetchObject = NULL;
 
 #ifdef ENABLE_APPLE_METAL
-  if (IsOSXVersionSupported(10, 11, 0) &&
-      ![[NSUserDefaults standardUserDefaults]
-          boolForKey:@"Debug_DisableMetal"]) {
-    fetchObject = new MacMetalFetchObject;
-
-    if (fetchObject->GetClientData() == nil) {
-      delete fetchObject;
-      fetchObject = NULL;
-    } else {
-      gpuEvent->SetFramebufferPageCount(METAL_FETCH_BUFFER_COUNT);
-      GPU->SetWillPostprocessDisplays(false);
+ if (IsOSXVersionSupported(10, 11, 0) && ![[NSUserDefaults standardUserDefaults] boolForKey:@"Debug_DisableMetal"])
+    {
+        fetchObject = new MacMetalFetchObject;
+        
+        if (fetchObject->GetClientData() == nil)
+        {
+            delete fetchObject;
+            fetchObject = NULL;
+        }
+        else
+        {
+            gpuEvent->SetFramebufferPageCount(METAL_FETCH_BUFFER_COUNT);
+            GPU->SetWillPostprocessDisplays(false);
+            
+            // INJECT SHARED METAL RESOURCES INTO 3D RENDERER
+            MetalDisplayViewSharedData *metalSharedData = 
+                (MetalDisplayViewSharedData *)fetchObject->GetClientData();
+            metal_setSharedResources(metalSharedData);
+            
+            printf("CocoaDSGPU: Shared Metal resources with 3D renderer\n");
+        }
     }
-  }
 #endif
 
   if (fetchObject == NULL) {

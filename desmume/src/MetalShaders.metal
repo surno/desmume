@@ -7,19 +7,23 @@ using namespace metal;
 // are converted to float on the CPU before uploading to Metal.
 // This structure receives the converted data:
 //   - float4 position: X, Y, Z, W in clip space (NDSVertex.position / 4096.0)
-//   - float2 texCoord: S, T texture coords (NDSVertex.texCoord / 16.0)
+//   - float2 texCoord: S, T texture coords in TEXEL units (divided by 16)
 //   - uchar4 color: R, G, B, A (0-255, copied directly from NDSVertex.color)
 struct VertexInput {
     float4 position [[attribute(0)]];  // Position (X, Y, Z, W)
-    float2 texCoord [[attribute(1)]];  // Texture coordinates (S, T)
+    float2 texCoord [[attribute(1)]];  // Texture coordinates in TEXEL units
     uchar4 color    [[attribute(2)]];  // Vertex color (R, G, B, A)
+    float invW      [[attribute(3)]];  // 4096.0/raw_w for color perspective correction
+    float invWTC    [[attribute(4)]];  // 256.0/w_normalized for texture coord perspective correction
 };
 
 // Vertex output / Fragment input structure
 struct VertexOutput {
     float4 position [[position]];      // Clip-space position (required)
-    float2 texCoord;                   // Texture coordinates (interpolated)
-    float4 color;                      // Vertex color (interpolated, normalized to 0-1)
+    float2 texCoord [[center_no_perspective]];  // Force linear interpolation
+    float4 color [[center_no_perspective]];     // Force linear interpolation
+    float invW [[center_no_perspective]];       // Force linear interpolation
+    float invWTC [[center_no_perspective]];     // Force linear interpolation
 };
 
 // Vertex shader
@@ -28,15 +32,21 @@ struct VertexOutput {
 vertex VertexOutput vertexShader(VertexInput in [[stage_in]]) {
     VertexOutput out;
     
-    // Pass through the position directly
-    // The NDS already provides positions in clip space (-1 to 1)
+    // Pass through the position directly (NDC with w=1, no perspective division needed)
     out.position = in.position;
     
-    // Pass through texture coordinates
-    out.texCoord = in.texCoord;
+    // Manual perspective correction for texture coordinates
+    // Input texCoord is in TEXEL units (already divided by 16)
+    // invWTC = 256.0 / w_normalized
+    // Store: texel_coord * invWTC for interpolation
+    // After linear interpolation, fragment shader will recover texel_coord by dividing
+    out.texCoord = in.texCoord * in.invWTC;
+    out.invW = in.invW;      // 4096.0/raw_w for colors (unused for now)
+    out.invWTC = in.invWTC;  // 256.0/w_normalized for texture coordinates
     
-    // Convert vertex color from 0-255 range to 0.0-1.0 range
-    out.color = float4(in.color) / 255.0;
+    // Convert vertex color from 0-63 range (5-bit) to 0.0-1.0 range
+    // NDS uses 5-bit RGB (0-31, stored as 0-63), alpha is unused (polygon alpha used instead)
+    out.color = float4(in.color) / 63.0;
     
     return out;
 }
@@ -44,6 +54,11 @@ vertex VertexOutput vertexShader(VertexInput in [[stage_in]]) {
 struct PolygonAttributes {
     uint polygonID;       // Polygon ID for edge marking (0-63)
     bool enableFog;       // Whether fog is enabled for this polygon
+    float polyAlpha;      // Polygon alpha from attributes (0.0-1.0)
+    float texScaleS;      // 1.0 / width for normalization
+    float texScaleT;      // 1.0 / height for normalization
+    uint wrapModeS;       // 0=clamp, 1=repeat, 2=mirror
+    uint wrapModeT;       // 0=clamp, 1=repeat, 2=mirror
 };
 
 struct FragmentOutput {
@@ -60,9 +75,73 @@ fragment FragmentOutput fragmentShaderTextured(
 ) {
     FragmentOutput out;
     
+    // Manual perspective correction to match soft rasterizer
+    // Vertex shader stored: texel_coord * invWTC (where invWTC = 256.0/w_normalized)
+    // Metal linearly interpolated this value across the polygon
+    // Divide by interpolated invWTC to recover perspective-correct texel coordinate
+    float invWTC_safe = max(in.invWTC, 0.0001f);
+    float2 texCoordTexels = in.texCoord / invWTC_safe;
+    
+    // CRITICAL: Truncate to integer in TEXEL space (matching soft rasterizer's (s32) cast)
+    int2 intTexCoord = int2(texCoordTexels);
+    
+    // Calculate texture sizes for wrapping
+    int texSizeS = int(1.0 / polyAttr.texScaleS + 0.5);
+    int texSizeT = int(1.0 / polyAttr.texScaleT + 0.5);
+    int texMaskS = texSizeS - 1;  // For power-of-2: 16→15, 32→31, 64→63
+    int texMaskT = texSizeT - 1;
+    
+    // Apply texture wrapping ON INTEGER TEXEL VALUES
+    // This exactly matches the soft rasterizer's bitwise operations
+    
+    // S axis wrapping
+    if (polyAttr.wrapModeS == 1u) {
+        // Repeat: val &= sizemask
+        intTexCoord.x = intTexCoord.x & texMaskS;
+    } else if (polyAttr.wrapModeS == 2u) {
+        // Mirror/Flip: val &= ((size << 1) - 1); if (val >= size) val = (size << 1) - val - 1;
+        intTexCoord.x = intTexCoord.x & ((texSizeS << 1) - 1);
+        if (intTexCoord.x >= texSizeS) {
+            intTexCoord.x = (texSizeS << 1) - intTexCoord.x - 1;
+        }
+    } else {
+        // Clamp: if (val < 0) val = 0; if (val > size-1) val = size-1;
+        intTexCoord.x = clamp(intTexCoord.x, 0, texMaskS);
+    }
+    
+    // T axis wrapping
+    if (polyAttr.wrapModeT == 1u) {
+        // Repeat: val &= sizemask
+        intTexCoord.y = intTexCoord.y & texMaskT;
+    } else if (polyAttr.wrapModeT == 2u) {
+        // Mirror/Flip: val &= ((size << 1) - 1); if (val >= size) val = (size << 1) - val - 1;
+        intTexCoord.y = intTexCoord.y & ((texSizeT << 1) - 1);
+        if (intTexCoord.y >= texSizeT) {
+            intTexCoord.y = (texSizeT << 1) - intTexCoord.y - 1;
+        }
+    } else {
+        // Clamp: if (val < 0) val = 0; if (val > size-1) val = size-1;
+        intTexCoord.y = clamp(intTexCoord.y, 0, texMaskT);
+    }
+    
+    // Convert wrapped integer texel coordinates to normalized [0, 1] for Metal's sampler
+    // Add 0.5 to sample from texel centers (standard GPU texture sampling)
+    float2 normalizedTexCoord = float2((float(intTexCoord.x) + 0.5) * polyAttr.texScaleS,
+                                       (float(intTexCoord.y) + 0.5) * polyAttr.texScaleT);
+    
     // Calculate color
-    float4 texColor = colorTexture.sample(textureSampler, in.texCoord);
-    out.color = texColor * in.color;
+    // Nintendo DS uses 5-bit RGB colors (0-31 stored as 0-63) and polygon alpha (not vertex alpha)
+    float4 texColor = colorTexture.sample(textureSampler, normalizedTexCoord);
+    float3 vertexColorRGB = in.color.rgb;
+    float4 finalColor = texColor * float4(vertexColorRGB, polyAttr.polyAlpha);
+    
+    // Discard fragments with very low alpha to prevent black artifacts
+    // This matches OpenGL's behavior: discard if alpha < 0.001
+    if (finalColor.a < 0.001) {
+        discard_fragment();
+    }
+    
+    out.color = finalColor;
     
     // Output polygon ID for edge marking
     out.polyID = polyAttr.polygonID;
@@ -77,19 +156,20 @@ fragment FragmentOutput fragmentShaderTextured(
 // POST PROCESSING SHADERS
 // =============================================================
 
-// Render states structure - must match the MetalRender RenderStates struct
+// Render states structure - must match the MetalRender RenderStates struct EXACTLY
+// C++ uses uint32_t for bools to ensure 4-byte alignment, so Metal must use uint
 struct RenderStates {
-    bool enableAntialiasing;
-    bool enableFogAlphaOnly;
-    int clearPolyID;
-    float clearDepth;
-    float alphaTestRef;
-    float fogOffset;  // Integer value [0, 32767] stored as float
-    float fogStep;    // Integer value [0, 32767] stored as float
-    float pad_0;
-    float4 fogColor;
-    float4 edgeColor[8];
-    float4 toonColor[32];
+    uint enableAntialiasing;   // uint32_t in C++
+    uint enableFogAlphaOnly;   // uint32_t in C++   
+    int clearPolyID;           // 4 bytes
+    float clearDepth;          // 4 bytes
+    float alphaTestRef;        // 4 bytes
+    float fogOffset;           // 4 bytes - Integer value [0, 32767] stored as float
+    float fogStep;             // 4 bytes - Integer value [0, 32767] stored as float
+    float pad_0;               // 4 bytes - Alignment padding
+    float4 fogColor;           // 16 bytes
+    float4 edgeColor[8];       // 128 bytes (8 * 16)
+    float4 toonColor[32];      // 512 bytes (32 * 16)
 };
 
 // Vertex structure for fullscreen quad

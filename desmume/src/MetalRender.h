@@ -52,8 +52,6 @@ protected:
   // These pointers point into _masterBuffer32, split into two halves
   Color4u8 *_readbackBuffer[2]; // Two buffers for async readback
 
-  bool _needsColorConversion; // Whether we need BGR666_Rev conversion
-
   // Perform color format conversion if needed (RGBA8888 to BGR666_Rev)
   void _ConvertColorFormat(Color4u8 *buffer, size_t pixelCount);
 
@@ -77,9 +75,6 @@ public:
   virtual Render3DError FillZero();
   virtual Render3DError FillColor32(const Color4u8 *src,
                                     const bool isSrcNativeSize);
-
-  // Override to track when color format conversion is needed
-  virtual void SetColorFormat(NDSColorFormat theFormat);
 
   // Set the texture to read from (called by MetalRender)
   void SetColorTexture(MTLTexturePtr texture);
@@ -113,6 +108,11 @@ class MetalRender : public Render3D {
 public:
   MetalRender();
   ~MetalRender();
+
+  // Two-phase initialization: Call this after construction to initialize resources.
+  // Returns RENDER3DERROR_NOERR on success, error code on failure.
+  // The factory function (MetalRendererCreate) handles this automatically.
+  Render3DError InitResources();
 
   virtual Render3DError ApplyRenderingSettings(const GFX3D_State &renderState);
 
@@ -212,8 +212,10 @@ private:
       _depthStencilStateShadowPass1; // Shadow volume mask generation
   MTLDepthStencilStatePtr
       _depthStencilStateShadowPass2;                // Shadow polygon ID check
-  MTLBufferPtr _vertexBuffer;                       // Vertex buffer
+  MTLBufferPtr _vertexBuffer[2];                    // Vertex buffer, double-buffered
+  size_t _vertexBufferIndex;                         // Index of current vertex buffer
   MTLBufferPtr _indexBuffer;                        // Index buffer
+  const GFX3D_GeometryList *_renderGList;           // Reference to current geometry list (for debugging)
   MTLTexturePtr _colorTexture;                      // Render target
   MTLTexturePtr _depthTexture;                      // Depth buffer
   MTLRenderPassDescriptorPtr _renderPassDescriptor; // Render pass descriptor
@@ -233,6 +235,9 @@ private:
   MTLSamplerStatePtr _samplerStateMirrorNearest; // Mirror, nearest filtering
   MTLSamplerStatePtr _samplerStateMirrorLinear;  // Mirror, linear filtering
 
+  // Dummy white texture for untextured polygons
+  MTLTexturePtr _dummyWhiteTexture;
+
   // Postprocessing pipeline states and textures
   MTLRenderPipelineStatePtr _pipelineStateEdgeMark; // Pipeline for edge marking
   MTLRenderPipelineStatePtr _pipelineStateFog; // Pipeline for fog rendering
@@ -246,9 +251,13 @@ private:
   MTLBufferPtr _renderStatesBuffer;      // Uniform buffer for  fog/edge colors
 
   // Cached render states for postprocessing
+  // NOTE: This struct must match the Metal shader's RenderStates struct exactly
+  // Metal requires 4-byte alignment for bools in uniform buffers
   struct RenderStates {
-    bool enableAntialiasing;
-    bool enableFogAlphaOnly;
+    uint32_t enableAntialiasing; // Use uint32_t instead of bool for Metal
+                                 // alignment
+    uint32_t enableFogAlphaOnly; // Use uint32_t instead of bool for Metal
+                                 // alignment
     int clearPolyID;
     float clearDepth;
     float alphaTestRef;
@@ -288,31 +297,20 @@ private:
   unsigned long GetWindingOrderForPolygon(const CPoly &cPoly) const;
 };
 
-// GPU3DInterface for Metal renderer
-extern GPU3DInterface gpu3DMetal;
-
-// C-style opaque factory functions for creating/destroying MetalRender
-// instances
+// =============================================================================
+// C-linkage declarations for cross-language interoperability
+// =============================================================================
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Create a new MetalRender instance as an opaque pointer.
- *
- * @return Opaque pointer to MetalRender instance, or NULL on failure
- *
- * Caller is responsible for destroying the instance with
- * MetalRendererDestroyOpaque().
- */
-void *MetalRendererCreateOpaque(void);
+// GPU3DInterface for Metal renderer (used by emulator core)
+extern GPU3DInterface gpu3DMetal;
 
-/**
- * Destroy a MetalRender instance created by MetalRendererCreateOpaque().
- *
- * @param renderer Opaque pointer to MetalRender instance (can be NULL)
- */
-void MetalRendererDestroyOpaque(void *renderer);
+// Shared Metal resource management (called by Cocoa display system)
+void metal_setSharedResources(void *sharedData);
+MTLDevicePtr metal_getSharedDevice(void);
+MTLCommandQueuePtr metal_getSharedCommandQueue(void);
 
 #ifdef __cplusplus
 }
