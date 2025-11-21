@@ -41,6 +41,11 @@ vertex VertexOutput vertexShader(VertexInput in [[stage_in]]) {
     return out;
 }
 
+struct PolygonAttributes {
+    uint polygonID;       // Polygon ID for edge marking (0-63)
+    bool enableFog;       // Whether fog is enabled for this polygon
+};
+
 struct FragmentOutput {
     float4 color [[color(0)]];        // Main color buffer
     uint polyID [[color(1)]];         // Polygon ID (for edge marking)
@@ -71,11 +76,6 @@ fragment FragmentOutput fragmentShaderTextured(
 // =============================================================
 // POST PROCESSING SHADERS
 // =============================================================
-
-struct PolygonAttributes {
-    uint polygonID;       // Polygon ID for edge marking (0-63)
-    bool enableFog;       // Whether fog is enabled for this polygon
-};
 
 // Render states structure - must match the MetalRender RenderStates struct
 struct RenderStates {
@@ -131,19 +131,19 @@ fragment float4 edgeMarkFragment(
     // Sample polygon ID at center and 4 neighbors (cross pattern)
     // Each polygon has an ID (0-63) which we read from the stencil/ID buffer
     uint polyID[5];
-    polyID[0] = polyIDTexture.read(coord + int2( 0,  0)).r;  // Center
-    polyID[1] = polyIDTexture.read(coord + int2( 1,  0)).r;  // Right
-    polyID[2] = polyIDTexture.read(coord + int2( 0,  1)).r;  // Up
-    polyID[3] = polyIDTexture.read(coord + int2(-1,  0)).r;  // Left
-    polyID[4] = polyIDTexture.read(coord + int2( 0, -1)).r;  // Down
+    polyID[0] = polyIDTexture.read(uint2(coord + int2( 0,  0))).r;  // Center
+    polyID[1] = polyIDTexture.read(uint2(coord + int2( 1,  0))).r;  // Right
+    polyID[2] = polyIDTexture.read(uint2(coord + int2( 0,  1))).r;  // Up
+    polyID[3] = polyIDTexture.read(uint2(coord + int2(-1,  0))).r;  // Left
+    polyID[4] = polyIDTexture.read(uint2(coord + int2( 0, -1))).r;  // Down
     
     // Sample depth at same locations
     float depth[5];
-    depth[0] = depthTexture.read(coord + int2( 0,  0)).r;
-    depth[1] = depthTexture.read(coord + int2( 1,  0)).r;
-    depth[2] = depthTexture.read(coord + int2( 0,  1)).r;
-    depth[3] = depthTexture.read(coord + int2(-1,  0)).r;
-    depth[4] = depthTexture.read(coord + int2( 0, -1)).r;
+    depth[0] = depthTexture.read(uint2(coord + int2( 0,  0))).r;
+    depth[1] = depthTexture.read(uint2(coord + int2( 1,  0))).r;
+    depth[2] = depthTexture.read(uint2(coord + int2( 0,  1))).r;
+    depth[3] = depthTexture.read(uint2(coord + int2(-1,  0))).r;
+    depth[4] = depthTexture.read(uint2(coord + int2( 0, -1))).r;
     
     // No edge by default
     float4 edgeColor = float4(0.0);

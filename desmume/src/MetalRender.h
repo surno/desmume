@@ -78,6 +78,9 @@ public:
   virtual Render3DError FillColor32(const Color4u8 *src,
                                     const bool isSrcNativeSize);
 
+  // Override to track when color format conversion is needed
+  virtual void SetColorFormat(NDSColorFormat theFormat);
+
   // Set the texture to read from (called by MetalRender)
   void SetColorTexture(MTLTexturePtr texture);
 };
@@ -284,5 +287,35 @@ private:
   // Return type is unsigned long to match MTLWinding enum (C++ compatibility)
   unsigned long GetWindingOrderForPolygon(const CPoly &cPoly) const;
 };
+
+// GPU3DInterface for Metal renderer
+extern GPU3DInterface gpu3DMetal;
+
+// C-style opaque factory functions for creating/destroying MetalRender
+// instances
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Create a new MetalRender instance as an opaque pointer.
+ *
+ * @return Opaque pointer to MetalRender instance, or NULL on failure
+ *
+ * Caller is responsible for destroying the instance with
+ * MetalRendererDestroyOpaque().
+ */
+void *MetalRendererCreateOpaque(void);
+
+/**
+ * Destroy a MetalRender instance created by MetalRendererCreateOpaque().
+ *
+ * @param renderer Opaque pointer to MetalRender instance (can be NULL)
+ */
+void MetalRendererDestroyOpaque(void *renderer);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

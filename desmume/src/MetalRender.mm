@@ -356,7 +356,12 @@ Render3DError MetalRender::SetFramebufferSize(size_t w, size_t h) {
 }
 
 NDSColorFormat MetalRender::RequestColorFormat(NDSColorFormat colorFormat) {
-  return colorFormat;
+  // Metal renderer supports both BGR666_Rev and BGR888_Rev natively
+  // through format conversion in MetalRenderColorOut
+  this->_outputFormat = (colorFormat == NDSColorFormat_BGR555_Rev)
+                            ? NDSColorFormat_BGR666_Rev
+                            : colorFormat;
+  return this->_outputFormat;
 }
 
 Render3DError MetalRender::FillZero() { return RENDER3DERROR_NOERR; }
@@ -1304,8 +1309,8 @@ Render3DError MetalRender::PostprocessFramebuffer() {
     MTLViewport viewport = {
         .originX = 0.0,
         .originY = 0.0,
-        .width = _framebufferWidth,
-        .height = _framebufferHeight,
+        .width = static_cast<double>(_framebufferWidth),
+        .height = static_cast<double>(_framebufferHeight),
         .znear = 0.0,
         .zfar = 1.0,
     };
@@ -1894,6 +1899,16 @@ void MetalRenderColorOut::Reset() {
   }
 }
 
+void MetalRenderColorOut::SetColorFormat(NDSColorFormat theFormat) {
+  // Call base class implementation first
+  Render3DColorOut::SetColorFormat(theFormat);
+
+  // Metal natively uses RGBA8Unorm format (8 bits per channel)
+  // The DS uses BGR666_Rev format (6 bits per RGB, 5 bits for alpha)
+  // We need conversion when the requested format is BGR666_Rev
+  _needsColorConversion = (theFormat == NDSColorFormat_BGR666_Rev);
+}
+
 size_t MetalRenderColorOut::BindRead32() {
   return this->Render3DColorOut::BindRead32();
 }
@@ -2059,26 +2074,72 @@ void MetalRenderColorOut::SetColorTexture(MTLTexturePtr texture) {
 
 void MetalRenderColorOut::_ConvertColorFormat(Color4u8 *buffer,
                                               size_t pixelCount) {
-  // The nintendo ds uses BGR666_Rev format for the framebuffer (6 bytes per
-  // channel, reversed order)
-  // Metal uses RGBA8888 format for the framebuffer (8 bytes per channel, in
-  // order)
+  // The Nintendo DS uses BGR666_Rev format for the framebuffer
+  // (6 bits per RGB channel, 5 bits for alpha)
+  // Metal uses RGBA8Unorm format (8 bits per channel)
+  // This function converts from 8888 to 6665 by reducing bit depth
+  // Note: No channel swapping needed; "BGR" refers to byte order in memory
 
-  for (size_t i = 0; i < pixelCount; i++) {
-    Color4u8 pixel = buffer[i];
+  // Use the standard colorspace conversion function for consistency
+  ColorspaceConvertBuffer8888To6665<false, false>((u32 *)buffer, (u32 *)buffer,
+                                                  pixelCount);
+}
 
-    // Convert 8-bit channels to 6-bit channels and pack
-    // DS format: bits 0-5 = blue, bits 6-11 = green, bits 12-17 = red,
-    // 18-23 = alpha
-    u8 r6 = (pixel.r >> 2); // 8 bits -> 6 bits (divide by 4)
-    u8 g6 = (pixel.g >> 2);
-    u8 b6 = (pixel.b >> 2);
-    u8 a6 = (pixel.a >> 3); // Alpha: 8 bits -> 5 bits
+// GPU3DInterface-compatible factory functions
+static Render3D *MetalRendererCreate() {
+  MetalRender *newRenderer = nullptr;
 
-    // Pack into BGR666_Rev format
-    buffer[i].r = b6; // Red channel stores blue
-    buffer[i].g = g6; // Green channel stores green
-    buffer[i].b = r6; // Blue channel stores red
-    buffer[i].a = a6; // Alpha channel stores alpha
+  try {
+    newRenderer = new MetalRender();
+  } catch (const std::exception &e) {
+    NSLog(@"Failed to create MetalRender: %s", e.what());
+    return nullptr;
+  } catch (...) {
+    NSLog(@"Failed to create MetalRender: unknown error");
+    return nullptr;
+  }
+
+  return newRenderer;
+}
+
+static void MetalRendererDestroy() {
+  if (CurrentRenderer != BaseRenderer) {
+    MetalRender *oldRenderer = (MetalRender *)CurrentRenderer;
+    CurrentRenderer = BaseRenderer;
+    delete oldRenderer;
   }
 }
+
+// GPU3DInterface declaration for Metal renderer
+GPU3DInterface gpu3DMetal = {"Metal", MetalRendererCreate,
+                             MetalRendererDestroy};
+
+// C-style opaque factory functions implementation
+extern "C" {
+
+void *MetalRendererCreateOpaque(void) {
+  MetalRender *renderer = nullptr;
+
+  try {
+    renderer = new MetalRender();
+  } catch (const std::exception &e) {
+    NSLog(@"Failed to create MetalRender: %s", e.what());
+    return nullptr;
+  } catch (...) {
+    NSLog(@"Failed to create MetalRender: unknown error");
+    return nullptr;
+  }
+
+  return static_cast<void *>(renderer);
+}
+
+void MetalRendererDestroyOpaque(void *renderer) {
+  if (renderer == nullptr) {
+    return;
+  }
+
+  MetalRender *metalRenderer = static_cast<MetalRender *>(renderer);
+  delete metalRenderer;
+}
+
+} // extern "C"
