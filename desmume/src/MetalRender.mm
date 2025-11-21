@@ -1,10 +1,59 @@
 #include <Metal/Metal.h>
 #include <cstddef>
 
+#include "GPU.h"
+#include "GPU_Operations.h"
 #include "MetalRender.h"
 #include "common.h"
 #include "render3D.h"
 #include "types.h"
+#include "utils/colorspacehandler/colorspacehandler.h"
+
+#ifdef __OBJC__
+#import "frontend/cocoa/userinterface/MacMetalDisplayView.h"
+#endif
+
+// Global shared Metal data
+static MetalDisplayViewSharedData *SharedMetalData = nil;
+
+// Function pointer implementations
+bool (*metalrender_init)() = nullptr;
+void (*metalrender_deinit)() = nullptr;
+bool (*metalrender_beginMetal)() = nullptr;
+void (*metalrender_endMetal)() = nullptr;
+
+// Shared resource injection
+extern "C" void metal_setSharedResources(void *sharedData)
+{
+    @autoreleasepool {
+        if (SharedMetalData != nil)
+        {
+            [(id)SharedMetalData release];
+            SharedMetalData = nil;
+        }
+        
+        if (sharedData != nullptr)
+        {
+            SharedMetalData = (MetalDisplayViewSharedData *)sharedData;
+            [(id)SharedMetalData retain];
+            
+            printf("Metal 3D Renderer: Received shared Metal resources\n");
+            printf("  Device: %s\n", [[[SharedMetalData device] name] UTF8String]);
+        }
+    }
+}
+
+// Helper functions
+extern "C" MTLDevicePtr metal_getSharedDevice()
+{
+    return [SharedMetalData device];
+}
+
+extern "C" MTLCommandQueuePtr metal_getSharedCommandQueue()
+{
+    return [SharedMetalData commandQueue];
+}
+
 
 // The emulator seems to call the renderer in this sequence:
 // Render(renderState, renderGList)
@@ -49,8 +98,10 @@
 // converted vertex data uploaded to the Metal vertex buffer.
 struct MetalVertex {
   float position[4]; // X, Y, Z, W in clip space (converted from s32 / 4096.0)
-  float texCoord[2]; // S, T texture coords (converted from s32 / 16.0)
+  float texCoord[2]; // S, T texture coords in TEXEL units (divided by 16)
   u8 color[4];       // R, G, B, A (0-255, copied as-is)
+  float invW;        // 4096.0/raw_w for color perspective correction
+  float invWTC;      // 256.0/w_normalized for texture coordinate perspective correction
 };
 
 MetalRender::MetalRender()
@@ -60,48 +111,67 @@ MetalRender::MetalRender()
       _depthStencilStateTranslucent(nil),
       _depthStencilStateTranslucentDepthWrite(nil),
       _depthStencilStateShadowPass1(nil), _depthStencilStateShadowPass2(nil),
-      _vertexBuffer(nil), _indexBuffer(nil), _colorTexture(nil),
+      _vertexBuffer{nil, nil}, _vertexBufferIndex(0), _indexBuffer(nil), _colorTexture(nil),
       _depthTexture(nil), _renderPassDescriptor(nil),
       _enableAlphaBlending(false), _enableAntialiasing(false),
       _metalColorOut(nullptr), _samplerStateClampNearest(nil),
       _samplerStateClampLinear(nil), _samplerStateRepeatNearest(nil),
       _samplerStateRepeatLinear(nil), _samplerStateMirrorNearest(nil),
-      _samplerStateMirrorLinear(nil) {
-  // Initialize device info
+      _samplerStateMirrorLinear(nil), _renderGList(nullptr) {
+  // Constructor only initializes members to safe defaults.
+  // Actual initialization is done in InitResources() - this follows the
+  // two-phase initialization pattern used by OpenGL renderers in this codebase.
   _deviceInfo.renderID = RENDERID_METAL;
   _deviceInfo.renderName = "Metal";
+}
 
-  _device = MTLCreateSystemDefaultDevice();
+Render3DError MetalRender::InitResources() {
+  // Two-phase initialization: This method does all the real setup.
+  // Returns error code on failure (no exceptions).
+  // The factory function (MetalRendererCreate) calls this after construction.
+  
+  // Get shared Metal resources
+  _device = metal_getSharedDevice();
   if (_device == nil) {
-    throw std::runtime_error("Failed to create Metal device");
+    printf("Metal 3D: ERROR - No shared Metal device available.\n");
+    return RENDER3DERROR_NOERR + 1;  // Generic error
   }
+  [_device retain];
 
-  _commandQueue = [_device newCommandQueue];
+  _commandQueue = metal_getSharedCommandQueue();
   if (_commandQueue == nil) {
-    throw std::runtime_error("Failed to create Metal command queue");
+    printf("Metal 3D: ERROR - No shared command queue available.\n");
+    return RENDER3DERROR_NOERR + 1;
+  }
+  [_commandQueue retain];
+  
+  printf("Metal 3D: Using shared device: %s\n", [[_device name] UTF8String]);
+
+  Render3DError error;
+  
+  error = InitializePipelineState();
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to initialize pipeline state.\n");
+    return error;
   }
 
-  if (InitializePipelineState() != RENDER3DERROR_NOERR) {
-    throw std::runtime_error("Failed to initialize pipeline state");
+  error = InitializeDepthStencilState();
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to initialize depth/stencil state.\n");
+    return error;
   }
 
-  if (InitializeDepthStencilState() != RENDER3DERROR_NOERR) {
-    throw std::runtime_error("Failed to initialize depth/stencil state");
+  error = InitializeSamplerState();
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to initialize sampler state.\n");
+    return error;
   }
 
-  // Initialize sampler states (sets all 4 sampler state pointers)
-  if (InitializeSamplerState() != RENDER3DERROR_NOERR) {
-    throw std::runtime_error("Failed to initialize sampler state");
-  }
-
-  // Initialize render targets with default NDS framebuffer size
-  // This MUST be done before any rendering operations to prevent nil descriptor
-  // crashes
-  if (InitializeRenderTargets(GPU_FRAMEBUFFER_NATIVE_WIDTH,
-                              GPU_FRAMEBUFFER_NATIVE_HEIGHT) !=
-      RENDER3DERROR_NOERR) {
-
-    throw std::runtime_error("Failed to initialize render targets");
+  error = InitializeRenderTargets(GPU_FRAMEBUFFER_NATIVE_WIDTH,
+                                  GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to initialize render targets.\n");
+    return error;
   }
 
   // Initialize the color output object
@@ -109,38 +179,35 @@ MetalRender::MetalRender()
       _device, GPU_FRAMEBUFFER_NATIVE_WIDTH, GPU_FRAMEBUFFER_NATIVE_HEIGHT);
   _metalColorOut->SetRenderer(this);
   _colorOut = _metalColorOut;
-
-  // Connect the color texture to the color output for framebuffer readback
   _metalColorOut->SetColorTexture(_colorTexture);
 
-  // initialize the postprocessing pipelines
-  if (InitializePostprocessPipelines() != RENDER3DERROR_NOERR) {
-    throw std::runtime_error("Failed to initialize postprocessing pipelines");
+  error = InitializePostprocessPipelines();
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to initialize postprocessing pipelines.\n");
+    return error;
   }
 
-  // create the fullscreen quad vertex buffer
-  if (CreateFullscreenQuad() != RENDER3DERROR_NOERR) {
-    throw std::runtime_error("Failed to create fullscreen quad vertex buffer");
+  error = CreateFullscreenQuad();
+  if (error != RENDER3DERROR_NOERR) {
+    printf("Metal 3D: ERROR - Failed to create fullscreen quad.\n");
+    return error;
   }
 
-  // allocate the render states buffer
   _renderStatesBuffer =
       [_device newBufferWithLength:sizeof(RenderStates)
                            options:MTLResourceStorageModeShared];
-
   if (_renderStatesBuffer == nil) {
-    throw std::runtime_error("Failed to allocate render states buffer");
+    printf("Metal 3D: ERROR - Failed to allocate render states buffer.\n");
+    return RENDER3DERROR_NOERR + 1;
   }
+
+  return RENDER3DERROR_NOERR;
 }
 
 MetalRender::~MetalRender() {
-  // Release objects that were explicitly retained in InitResources()
-  [_commandQueue release];
-  _commandQueue = nil;
-  [_device release];
+  // Clean up - ARC will handle the rest
   _device = nil;
-  
-  // These are either autoreleased or nil (if InitResources failed partway)
+  _commandQueue = nil;
   _commandBuffer = nil;
   _pipelineState = nil;
   _renderCommandEncoder = nil;
@@ -150,7 +217,9 @@ MetalRender::~MetalRender() {
   _depthStencilStateTranslucentDepthWrite = nil;
   _depthStencilStateShadowPass1 = nil;
   _depthStencilStateShadowPass2 = nil;
-  _vertexBuffer = nil;
+  _vertexBuffer[0] = nil;
+  _vertexBuffer[1] = nil;
+  _vertexBufferIndex = 0;
   _indexBuffer = nil;
   _colorTexture = nil;
   _depthTexture = nil;
@@ -161,6 +230,7 @@ MetalRender::~MetalRender() {
   _samplerStateRepeatLinear = nil;
   _samplerStateMirrorNearest = nil;
   _samplerStateMirrorLinear = nil;
+  _dummyWhiteTexture = nil;
 
   // Clean up postprocessing resources
   _pipelineStateEdgeMark = nil;
@@ -285,6 +355,18 @@ Render3DError MetalRender::RenderPowerOff() {
   return RENDER3DERROR_NOERR;
 }
 
+Render3DError MetalRender::Render(const GFX3D_State &renderState,
+                                  const GFX3D_GeometryList &renderGList) {
+  // The base class Render() orchestrates the rendering pipeline:
+  // 1. Sets up clear color and attributes
+  // 2. Calls BeginRender() to prepare Metal state
+  // 3. Calls ClearFramebuffer() which calls ClearUsingImage or ClearUsingValues
+  // 4. Calls RenderGeometry() to draw all polygons
+  // 5. Calls PostprocessFramebuffer() for edge marking and fog
+  // 6. Calls EndRender() to finalize and commit
+  return this->Render3D::Render(renderState, renderGList);
+}
+
 Render3DError MetalRender::RenderFinish() {
   // Check if there's actually rendering that needs to finish
   // The base class manages this flag
@@ -335,6 +417,12 @@ Render3DError MetalRender::RenderFlush(bool willFlushBuffer32,
   return this->Render3D::RenderFlush(willFlushBuffer32, willFlushBuffer16);
 }
 
+Render3DError MetalRender::VramReconfigureSignal() {
+  // When VRAM is reconfigured, the texture cache must be invalidated
+  // because the texture data may have changed or moved
+  return this->Render3D::VramReconfigureSignal();
+}
+
 Render3DError MetalRender::SetFramebufferSize(size_t w, size_t h) {
   // Update render targets by recreating the _colorTexture
   Render3DError error = InitializeRenderTargets(w, h);
@@ -356,19 +444,41 @@ Render3DError MetalRender::SetFramebufferSize(size_t w, size_t h) {
 }
 
 NDSColorFormat MetalRender::RequestColorFormat(NDSColorFormat colorFormat) {
-  // Metal renderer supports both BGR666_Rev and BGR888_Rev natively
-  // through format conversion in MetalRenderColorOut
+  // Metal renderer supports BGR666_Rev natively through format conversion
+  // Accept the requested format from the system
   this->_outputFormat = (colorFormat == NDSColorFormat_BGR555_Rev)
                             ? NDSColorFormat_BGR666_Rev
                             : colorFormat;
+  
+  // Propagate the color format to the color output object
+  // This calls the base class SetColorFormat() which sets this->_format
+  if (_colorOut != nullptr) {
+    _colorOut->SetColorFormat(this->_outputFormat);
+  }
+  
   return this->_outputFormat;
 }
 
-Render3DError MetalRender::FillZero() { return RENDER3DERROR_NOERR; }
+NDSColorFormat MetalRender::GetColorFormat() const {
+  // Return the current output color format
+  return this->_outputFormat;
+}
+
+Render3DError MetalRender::FillZero() {
+  if (_metalColorOut == nullptr) {
+    return RENDER3DERROR_NOERR;
+  }
+
+  return _metalColorOut->FillZero();
+}
 
 Render3DError MetalRender::FillColor32(const Color4u8 *__restrict src,
                                        const bool isSrcNativeSize) {
-  return RENDER3DERROR_NOERR;
+  if (_metalColorOut == nullptr) {
+    return RENDER3DERROR_NOERR;
+  }
+
+  return _metalColorOut->FillColor32(src, isSrcNativeSize);
 }
 
 ClipperMode MetalRender::GetPreferredPolygonClippingMode() const {
@@ -376,10 +486,24 @@ ClipperMode MetalRender::GetPreferredPolygonClippingMode() const {
 }
 
 Render3DError MetalRender::InitializePipelineState() {
-  // Load the default Metal library, as this will automatically load the
-  // shaders.
-  id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
+NSError *error = nil;
+
+  // IMPORTANT: Load from shared library instead of creating new one
+  id<MTLLibrary> defaultLibrary = nil;
+  
+  if (SharedMetalData != nil)
+  {
+      // Use the shared library from the display system
+      defaultLibrary = [SharedMetalData defaultLibrary];
+  }
+  else
+  {
+      // Fallback: load our own library
+      defaultLibrary = [_device newDefaultLibrary];
+  }
+
   if (defaultLibrary == nil) {
+    printf("Metal: Failed to load Metal library\n");
     return RENDER3DERROR_INVALID_BINDING;
   }
 
@@ -387,6 +511,7 @@ Render3DError MetalRender::InitializePipelineState() {
   id<MTLFunction> vertexFunction =
       [defaultLibrary newFunctionWithName:@"vertexShader"];
   if (vertexFunction == nil) {
+    printf("Metal 3D: ERROR - vertexShader not found in library!\n");
     return RENDER3DERROR_INVALID_BINDING;
   }
 
@@ -394,9 +519,9 @@ Render3DError MetalRender::InitializePipelineState() {
   id<MTLFunction> fragmentFunction =
       [defaultLibrary newFunctionWithName:@"fragmentShaderTextured"];
   if (fragmentFunction == nil) {
+    printf("Metal 3D: ERROR - fragmentShaderTextured not found in library!\n");
     return RENDER3DERROR_INVALID_BINDING;
   }
-
   // Create the vertex descriptor, describes the layout of the vertex data
   MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
 
@@ -415,6 +540,18 @@ Render3DError MetalRender::InitializePipelineState() {
   vertexDescriptor.attributes[2].offset =
       24; // sizeof(float) * 4 + sizeof(float) * 2 = 24
   vertexDescriptor.attributes[2].bufferIndex = 0;
+
+  // 4096.0/w for color perspective correction
+  vertexDescriptor.attributes[3].format = MTLVertexFormatFloat;
+  vertexDescriptor.attributes[3].offset =
+      28; // sizeof(float) * 4 + sizeof(float) * 2 + sizeof(u8) * 4 = 28
+  vertexDescriptor.attributes[3].bufferIndex = 0;
+
+  // 256.0/w for texture coordinate perspective correction
+  vertexDescriptor.attributes[4].format = MTLVertexFormatFloat;
+  vertexDescriptor.attributes[4].offset =
+      32; // sizeof(float) * 4 + sizeof(float) * 2 + sizeof(u8) * 4 + sizeof(float) = 32
+  vertexDescriptor.attributes[4].bufferIndex = 0;
 
   // Layout the vertex data
   // Use MetalVertex stride, not NDSVertex, because we convert the data
@@ -446,9 +583,10 @@ Render3DError MetalRender::InitializePipelineState() {
       MTLBlendFactorOneMinusSourceAlpha;
 
   // Configure the depth/stencil state
-  pipelineDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-
-  pipelineDesc.stencilAttachmentPixelFormat = MTLPixelFormatStencil8;
+  // Use combined depth-stencil format to match the framebuffer texture
+  pipelineDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
+  pipelineDesc.stencilAttachmentPixelFormat =
+      MTLPixelFormatDepth32Float_Stencil8;
 
   // Configure additional color attachments for postprocessing
   pipelineDesc.colorAttachments[1].pixelFormat =
@@ -457,7 +595,6 @@ Render3DError MetalRender::InitializePipelineState() {
       MTLPixelFormatR8Unorm; // Fog enable flag
 
   // create the pipeline state
-  NSError *error = nil;
   _pipelineState = [_device newRenderPipelineStateWithDescriptor:pipelineDesc
                                                            error:&error];
   if (_pipelineState == nil) {
@@ -527,7 +664,7 @@ Render3DError MetalRender::InitializeDepthStencilState() {
 
   // translucent polygons with alpha < 31 AND translucent depth write disabled
   MTLDepthStencilDescriptor *translucentDesc = [MTLDepthStencilDescriptor new];
-  translucentDesc.depthCompareFunction = MTLCompareFunctionLess;
+  translucentDesc.depthCompareFunction = MTLCompareFunctionLessEqual;
   translucentDesc.depthWriteEnabled = NO;
   translucentDesc.frontFaceStencil = translucentStencil;
   translucentDesc.backFaceStencil = translucentStencil;
@@ -542,7 +679,7 @@ Render3DError MetalRender::InitializeDepthStencilState() {
   // translucent polygons with alpha < 31 AND translucent depth write enabled
   MTLDepthStencilDescriptor *translucentDepthWriteDesc =
       [MTLDepthStencilDescriptor new];
-  translucentDepthWriteDesc.depthCompareFunction = MTLCompareFunctionLess;
+  translucentDepthWriteDesc.depthCompareFunction = MTLCompareFunctionLessEqual;
   translucentDepthWriteDesc.depthWriteEnabled = YES;
   translucentDepthWriteDesc.frontFaceStencil = translucentStencil;
   translucentDepthWriteDesc.backFaceStencil = translucentStencil;
@@ -616,6 +753,7 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   _clippedPolyOpaqueCount = renderGList.clippedPolyOpaqueCount;
   _clippedPolyList = (CPoly *)renderGList.clippedPolyList;
   _rawPolyList = (POLY *)renderGList.rawPolyList;
+  _renderGList = &renderGList; // Store for debugging
 
   // Store the render state
   _enableAlphaBlending =
@@ -623,56 +761,127 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
 
   // If there isn't anything to render, return early
   if (_clippedPolyCount == 0) {
+    // Reset the bound color output index to prevent stale state
+    this->_lastBoundColorOut = RENDER3D_RESOURCE_INDEX_NONE;
     return RENDER3DERROR_NOERR;
   }
 
-  // Calculate the buffer size, need space for all converted vertices
-  // Note: We use MetalVertex (with converted floats), not NDSVertex (with
-  // s32)
-  size_t vertexBufferSize = renderGList.rawVertCount * sizeof(MetalVertex);
+  // Calculate vertex and index counts for CLIPPED vertices
+  // We use cPoly.vtx[] which contains viewport-transformed screen-space vertices (16.16 fixed-point pixels)
+  size_t totalVertexCount = 0;
+  size_t totalIndexCount = 0;
+  for (size_t i = 0; i < _clippedPolyCount; i++) {
+    const CPoly &cPoly = _clippedPolyList[i];
+    const POLY &rawPoly = _rawPolyList[cPoly.index];
+    // CRITICAL: Use cPoly.type (clipped vertex count) not rawPoly.type (original count)
+    // After clipping, the polygon may have a different number of vertices
+    const size_t polyType = cPoly.type;
+    
+    totalVertexCount += polyType;
+    
+    // Calculate index count based on how we tessellate the polygon
+    if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
+        (rawPoly.vtxFormat == GFX3D_QUADS ||
+         rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
+      // Quads with exactly 4 vertices -> 2 triangles = 6 indices
+      totalIndexCount += 6;
+    } else if (polyType >= 3) {
+      // Triangle fan tessellation: (n-2) triangles = (n-2) * 3 indices
+      totalIndexCount += (polyType - 2) * 3;
+    }
+  }
+  
+  size_t vertexBufferSize = totalVertexCount * sizeof(MetalVertex);
+  size_t indexBufferSize = totalIndexCount * sizeof(uint16_t);
 
-  // Need space for index buffer, quads will be converted to triangles.
-  // Estimate: assume all quads, so 6 indices per quad instead of 4.
-  size_t maxIndexCount =
-      renderGList.rawVertCount * 2; // Very conservative estimate.
-  size_t indexBufferSize = maxIndexCount * sizeof(uint16_t);
-
-  // Create or update the vertex buffer
-  if (_vertexBuffer == nil || vertexBufferSize > [_vertexBuffer length]) {
-    // Set buffer to use unified memory, so it can be shared with the CPU
-    _vertexBuffer = [_device newBufferWithLength:vertexBufferSize
+  // Create or update buffers
+  _vertexBufferIndex = 1 - _vertexBufferIndex;
+  if (_vertexBuffer[_vertexBufferIndex] == nil || vertexBufferSize > [_vertexBuffer[_vertexBufferIndex] length]) {
+    _vertexBuffer[_vertexBufferIndex] = [_device newBufferWithLength:vertexBufferSize
                                          options:MTLResourceStorageModeShared];
-    if (_vertexBuffer == nil) {
+    if (_vertexBuffer[_vertexBufferIndex] == nil) {
       return RENDER3DERROR_INVALID_BUFFER;
     }
   }
 
-  // Convert and upload vertex data to the Metal buffer
-  // NDSVertex stores positions and texcoords as s32 fixed-point values that
-  // must be converted to float for Metal. Position coordinates use a scale
-  // factor of 4096, and texture coordinates use a scale factor of 16.
-  MetalVertex *metalVertices = (MetalVertex *)[_vertexBuffer contents];
-  for (size_t i = 0; i < renderGList.rawVertCount; i++) {
-    const NDSVertex &vtx = renderGList.rawVtxList[i];
+  // Convert CLIPPED vertices from screen-space pixels to NDC
+  // cPoly.vtx[] contains 16.16 fixed-point screen pixels after viewport transformation
+  MetalVertex *metalVertices = (MetalVertex *)[_vertexBuffer[_vertexBufferIndex] contents];
+  size_t vertexOffset = 0;
+  
+  for (size_t i = 0; i < _clippedPolyCount; i++) {
+    const CPoly &cPoly = _clippedPolyList[i];
+    const POLY &rawPoly = _rawPolyList[cPoly.index];
+    
+    // CRITICAL: Use cPoly.type (clipped vertex count) not rawPoly.type (original count)
+    const size_t polyType = cPoly.type;
+    
+    // Note: We no longer normalize texture coordinates at the vertex level
+    // since we're keeping them in raw s32 scale to match the soft rasterizer
+    const NDSTextureFormat packFormat = (NDSTextureFormat)rawPoly.texParam.PackedFormat;
+    const bool hasTexture = (packFormat != TEXMODE_NONE);
+    
+    for (size_t j = 0; j < polyType; j++) {
+      const NDSVertex &vtx = cPoly.vtx[j];
 
-    // Convert position from s32 fixed-point (scale 1/4096) to float
-    metalVertices[i].position[0] = (float)vtx.position.x / 4096.0f;
-    metalVertices[i].position[1] = (float)vtx.position.y / 4096.0f;
-    metalVertices[i].position[2] = (float)vtx.position.z / 4096.0f;
-    metalVertices[i].position[3] = (float)vtx.position.w / 4096.0f;
+      // Convert from 16.16 fixed-point screen pixels to floating-point pixels
+      float pixel_x = (float)vtx.position.x / 65536.0f;
+      float pixel_y = (float)vtx.position.y / 65536.0f;
+      float pixel_z = (float)vtx.position.z / 2147483648.0f; // 0.31 fixed-point to [0, 1]
+      
+      // Convert from screen pixels to NDC [-1, 1]
+      // NDS screen is 256x192, with origin at top-left
+      float ndc_x = (pixel_x / 256.0f) * 2.0f - 1.0f;
+      float ndc_y = 1.0f - (pixel_y / 192.0f) * 2.0f; // Flip Y
+      
+      // Store as NDC with w=1 (positions are already perspective-divided)
+      metalVertices[vertexOffset].position[0] = ndc_x;
+      metalVertices[vertexOffset].position[1] = ndc_y;
+      metalVertices[vertexOffset].position[2] = pixel_z;
+      metalVertices[vertexOffset].position[3] = 1.0f;
+      
+      // Get the original clip-space w value (preserved by NDS after perspective division)
+      // w is in 20.12 fixed-point format
+      float raw_w = (float)vtx.position.w;
+      float w_normalized = raw_w / 4096.0f;
+      float invW = (raw_w > 0.0f) ? (4096.0f / raw_w) : 1.0f;  // 4096.0/raw_w for colors
+      
+      // invWTC = 256.0 / w_normalized for texture coordinate perspective correction
+      // This gives larger values (~0.7) for better floating-point precision
+      float invWTC = (w_normalized > 0.0f) ? (256.0f / w_normalized) : 1.0f;
+      
+      // Store texture coordinates as TEXELS (divide by 16)
+      // This is the original approach that keeps values in a reasonable range
+      float texCoordS = (float)vtx.texCoord.s / 16.0f;  // Convert to texel coordinates
+      float texCoordT = (float)vtx.texCoord.t / 16.0f;  // Convert to texel coordinates
+      
+      if (hasTexture) {
+        // Store texel coordinates (already divided by 16)
+        // Perspective correction happens in vertex shader: texCoord * invWTC
+        // Fragment shader will recover texel coords directly by dividing by invWTC
+        metalVertices[vertexOffset].texCoord[0] = texCoordS;
+        metalVertices[vertexOffset].texCoord[1] = texCoordT;
+      } else {
+        // For untextured polygons, use (0, 0) to sample from dummy white texture
+        metalVertices[vertexOffset].texCoord[0] = 0.0f;
+        metalVertices[vertexOffset].texCoord[1] = 0.0f;
+      }
 
-    // Convert texture coordinates from s32 fixed-point (scale 1/16) to float
-    metalVertices[i].texCoord[0] = (float)vtx.texCoord.s / 16.0f;
-    metalVertices[i].texCoord[1] = (float)vtx.texCoord.t / 16.0f;
-
-    // Copy vertex color as-is (already in correct u8 format)
-    metalVertices[i].color[0] = vtx.color.r;
-    metalVertices[i].color[1] = vtx.color.g;
-    metalVertices[i].color[2] = vtx.color.b;
-    metalVertices[i].color[3] = vtx.color.a;
+      // Copy vertex color
+      metalVertices[vertexOffset].color[0] = vtx.color.r;
+      metalVertices[vertexOffset].color[1] = vtx.color.g;
+      metalVertices[vertexOffset].color[2] = vtx.color.b;
+      metalVertices[vertexOffset].color[3] = vtx.color.a;
+      
+      // Store the calculated invW values
+      metalVertices[vertexOffset].invW = invW;      // 4096.0/w for colors
+      metalVertices[vertexOffset].invWTC = invWTC;  // 256.0/w for texture coordinates
+      
+      vertexOffset++;
+    }
   }
 
-  // Now, create the index buffer
+  // Create index buffer
   if (_indexBuffer == nil || indexBufferSize > [_indexBuffer length]) {
     _indexBuffer = [_device newBufferWithLength:indexBufferSize
                                         options:MTLResourceStorageModeShared];
@@ -681,44 +890,43 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     }
   }
 
-  // Build the index buffer
-  // Need to convert all polygon types to triangles.
+  // Build index buffer for clipped vertices
   u16 *indexPtr = (u16 *)[_indexBuffer contents];
   size_t indexCount = 0;
+  vertexOffset = 0;
 
   for (size_t i = 0; i < _clippedPolyCount; i++) {
-    // Bounds check to prevent buffer overflow
-    if (i >= CLIPPED_POLYLIST_SIZE) {
-      // This should never happen, but protect against buffer overflow
-      break;
-    }
-
     const CPoly &cPoly = _clippedPolyList[i];
     const POLY &rawPoly = _rawPolyList[cPoly.index];
-    const size_t polyType = rawPoly.type; // number of vertices in the polygon
+    // CRITICAL: Use cPoly.type (clipped vertex count) not rawPoly.type (original count)
+    const size_t polyType = cPoly.type;
 
     // Convert quads to triangles
-    // Quad (0, 1, 2, 3) -> Triangle (0, 1, 2) and Triangle (0, 2, 3)
+    // Note: After clipping, a quad might still have 4 vertices
     if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
         (rawPoly.vtxFormat == GFX3D_QUADS ||
          rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
-      // First triangle: 0, 1, 2
-      indexPtr[indexCount++] = rawPoly.vertIndexes[0];
-      indexPtr[indexCount++] = rawPoly.vertIndexes[1];
-      indexPtr[indexCount++] = rawPoly.vertIndexes[2];
-      // Second triangle: 0, 2, 3
-      indexPtr[indexCount++] = rawPoly.vertIndexes[0];
-      indexPtr[indexCount++] = rawPoly.vertIndexes[2];
-      indexPtr[indexCount++] = rawPoly.vertIndexes[3];
+      indexPtr[indexCount++] = vertexOffset + 0;
+      indexPtr[indexCount++] = vertexOffset + 1;
+      indexPtr[indexCount++] = vertexOffset + 2;
+      indexPtr[indexCount++] = vertexOffset + 0;
+      indexPtr[indexCount++] = vertexOffset + 2;
+      indexPtr[indexCount++] = vertexOffset + 3;
     } else {
-      // Triangles and other primitives: add vertices as-is
-      for (size_t j = 0; j < polyType; j++) {
-        const u16 vertIndex = rawPoly.vertIndexes[j];
-        indexPtr[indexCount++] = vertIndex;
+      // For triangles, or polygons with more/less vertices after clipping
+      // Use triangle fan tessellation for polygons with 4+ vertices
+      if (polyType >= 3) {
+        for (size_t j = 1; j < polyType - 1; j++) {
+          indexPtr[indexCount++] = vertexOffset + 0;
+          indexPtr[indexCount++] = vertexOffset + j;
+          indexPtr[indexCount++] = vertexOffset + j + 1;
+        }
       }
     }
-
-    // Store this texture for the polygon
+    
+    vertexOffset += polyType;
+    
+    // Store texture
     _textureList[i] =
         this->GetLoadedTextureFromPolygon(rawPoly, _enableTextureSampling);
   }
@@ -748,6 +956,16 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   if (_enableFog || _enableEdgeMark) {
     // Update the render states buffer with the current render states
     RenderStates *states = (RenderStates *)[_renderStatesBuffer contents];
+
+    // Initialize all fields (using uint32_t for bools to match Metal shader
+    // alignment)
+    states->enableAntialiasing = _enableAntialiasing ? 1 : 0;
+    states->enableFogAlphaOnly =
+        0; // TODO: Set based on actual fog alpha-only setting
+    states->clearPolyID = this->_clearAttributes.opaquePolyID;
+    states->clearDepth = (float)this->_clearAttributes.depth / 16777215.0f;
+    states->alphaTestRef =
+        0.0f; // Alpha test reference (not currently used by NDS)
 
     // Fog parameters (keep as integer values, not normalized)
     // The shader will use these directly in the fog density calculation
@@ -780,14 +998,18 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     if (_enableFog) {
       // Create 1D texture for fog denisty if not already created
       if (_fogDensityTexture == nil) {
-        MTLTextureDescriptor *desc = [MTLTextureDescriptor
-            texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
-                                         width:32
-                                        height:1
-                                     mipmapped:NO];
-
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor new];
+        desc.textureType = MTLTextureType1D;
+        desc.pixelFormat = MTLPixelFormatR8Unorm;
+        desc.width = 32;
+        desc.height = 1;
+        desc.mipmapLevelCount = 1;
         desc.usage = MTLTextureUsageShaderRead;
         _fogDensityTexture = [_device newTextureWithDescriptor:desc];
+        if (_fogDensityTexture == nil) {
+          NSLog(@"Error: Failed to create fog density texture");
+          return RENDER3DERROR_INVALID_BUFFER;
+        }
       }
 
       // Convert fog density table to normalized byte values
@@ -900,6 +1122,11 @@ Render3DError MetalRender::RenderGeometry() {
   struct PolygonAttributes {
     uint polygonID;
     bool enableFog;
+    float polyAlpha;
+    float texScaleS; // 1.0 / width for normalization
+    float texScaleT; // 1.0 / height for normalization
+    uint wrapModeS;  // 0=clamp, 1=repeat, 2=mirror
+    uint wrapModeT;  // 0=clamp, 1=repeat, 2=mirror
   };
 
   // Exit if there are no polygons to render
@@ -933,7 +1160,7 @@ Render3DError MetalRender::RenderGeometry() {
   [_renderCommandEncoder setViewport:viewport];
 
   // bind the vertex buffer and index buffer
-  [_renderCommandEncoder setVertexBuffer:_vertexBuffer offset:0 atIndex:0];
+  [_renderCommandEncoder setVertexBuffer:_vertexBuffer[_vertexBufferIndex] offset:0 atIndex:0];
 
   // The emulator separates polygons into two groups:
   // 1. Opaque polygons (0 to _clippedPolyOpaqueCount-1)
@@ -973,20 +1200,71 @@ Render3DError MetalRender::RenderGeometry() {
       this->SetupViewport(rawPoly.viewport);
 
       // determine the number of indices to draw for this polygon
-      const size_t polyType = rawPoly.type; // number of vertices in the polygon
-      size_t indexCount = polyType;
+      // CRITICAL: Use cPoly.type (clipped vertex count) not rawPoly.type
+      const size_t polyType = cPoly.type;
+      size_t indexCount = 0;
 
-      // recall: quads were converted to triangles, so we need to draw the
-      // polygon as a triangle
+      // Calculate index count based on how we built the index buffer
       if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
           (rawPoly.vtxFormat == GFX3D_QUADS ||
            rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
-        indexCount = 6; // 3 for first triangle, 3 for the second triangle
+        // Quads with 4 vertices after clipping -> 2 triangles = 6 indices
+        indexCount = 6;
+      } else if (polyType >= 3) {
+        // Triangle fan tessellation: (polyType - 2) triangles = (polyType - 2) * 3 indices
+        indexCount = (polyType - 2) * 3;
       }
 
       PolygonAttributes polyAttr;
       polyAttr.polygonID = rawPoly.attribute.PolygonID;
       polyAttr.enableFog = rawPoly.attribute.Fog_Enable ? 1 : 0;
+      polyAttr.polyAlpha = (float)rawPoly.attribute.Alpha / 31.0f; // Convert 5-bit alpha (0-31) to 0.0-1.0
+      
+      // Get texture size for matching soft rasterizer formula
+      const NDSTextureFormat packFormat = (NDSTextureFormat)rawPoly.texParam.PackedFormat;
+      const bool hasTexture = (packFormat != TEXMODE_NONE);
+      if (hasTexture) {
+        const u32 texWidth = 8 << rawPoly.texParam.SizeShiftS;
+        const u32 texHeight = 8 << rawPoly.texParam.SizeShiftT;
+        if (texWidth > 0 && texHeight > 0) {
+          // Store 1.0/width and 1.0/height for normalization
+          polyAttr.texScaleS = 1.0f / (float)texWidth;
+          polyAttr.texScaleT = 1.0f / (float)texHeight;
+          
+          // Determine wrap modes independently for S and T axes
+          // 0=clamp, 1=repeat, 2=mirror
+          const bool repeatS = rawPoly.texParam.RepeatS_Enable;
+          const bool repeatT = rawPoly.texParam.RepeatT_Enable;
+          const bool mirrorS = rawPoly.texParam.MirroredRepeatS_Enable;
+          const bool mirrorT = rawPoly.texParam.MirroredRepeatT_Enable;
+          
+          if (repeatS && mirrorS) {
+            polyAttr.wrapModeS = 2; // Mirror
+          } else if (repeatS) {
+            polyAttr.wrapModeS = 1; // Repeat
+          } else {
+            polyAttr.wrapModeS = 0; // Clamp
+          }
+          
+          if (repeatT && mirrorT) {
+            polyAttr.wrapModeT = 2; // Mirror
+          } else if (repeatT) {
+            polyAttr.wrapModeT = 1; // Repeat
+          } else {
+            polyAttr.wrapModeT = 0; // Clamp
+          }
+        } else {
+          polyAttr.texScaleS = 1.0f;
+          polyAttr.texScaleT = 1.0f;
+          polyAttr.wrapModeS = 0;
+          polyAttr.wrapModeT = 0;
+        }
+      } else {
+        polyAttr.texScaleS = 1.0f; // Not used for untextured polygons
+        polyAttr.texScaleT = 1.0f;
+        polyAttr.wrapModeS = 0;
+        polyAttr.wrapModeT = 0;
+      }
 
       [_renderCommandEncoder setFragmentBytes:&polyAttr
                                        length:sizeof(PolygonAttributes)
@@ -1006,8 +1284,7 @@ Render3DError MetalRender::RenderGeometry() {
 
   // draw the translucent polygons
   if (_clippedPolyOpaqueCount < _clippedPolyCount) {
-    // TODO: Update pipeline state for alpha blending, if needed.
-
+    
     for (size_t i = _clippedPolyOpaqueCount; i < _clippedPolyCount; i++) {
       const CPoly &cPoly = _clippedPolyList[i];
       const POLY &rawPoly = _rawPolyList[cPoly.index];
@@ -1037,31 +1314,84 @@ Render3DError MetalRender::RenderGeometry() {
       this->SetupViewport(rawPoly.viewport);
 
       // determine the number of indices to draw for this polygon
-      const size_t polyType = rawPoly.type; // number of vertices in the polygon
-      size_t indexCount = polyType;
+      // CRITICAL: Use cPoly.type (clipped vertex count) not rawPoly.type
+      const size_t polyType = cPoly.type;
+      size_t indexCount = 0;
 
-      // recall: quads were converted to triangles, so we need to draw the
-      // polygon as a triangle
+      // Calculate index count based on how we built the index buffer
       if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
           (rawPoly.vtxFormat == GFX3D_QUADS ||
            rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
-        indexCount = 6; // 3 for first triangle, 3 for the second triangle
+        // Quads with 4 vertices after clipping -> 2 triangles = 6 indices
+        indexCount = 6;
+      } else if (polyType >= 3) {
+        // Triangle fan tessellation: (polyType - 2) triangles = (polyType - 2) * 3 indices
+        indexCount = (polyType - 2) * 3;
       }
 
       PolygonAttributes polyAttr;
       polyAttr.polygonID = rawPoly.attribute.PolygonID;
       polyAttr.enableFog = rawPoly.attribute.Fog_Enable ? 1 : 0;
+      polyAttr.polyAlpha = (float)rawPoly.attribute.Alpha / 31.0f; // Convert 5-bit alpha (0-31) to 0.0-1.0
+      
+      // Get texture size for matching soft rasterizer formula
+      const NDSTextureFormat packFormat = (NDSTextureFormat)rawPoly.texParam.PackedFormat;
+      const bool hasTexture = (packFormat != TEXMODE_NONE);
+      if (hasTexture) {
+        const u32 texWidth = 8 << rawPoly.texParam.SizeShiftS;
+        const u32 texHeight = 8 << rawPoly.texParam.SizeShiftT;
+        if (texWidth > 0 && texHeight > 0) {
+          // Store 1.0/width and 1.0/height for normalization
+          polyAttr.texScaleS = 1.0f / (float)texWidth;
+          polyAttr.texScaleT = 1.0f / (float)texHeight;
+          
+          // Determine wrap modes independently for S and T axes
+          // 0=clamp, 1=repeat, 2=mirror
+          const bool repeatS = rawPoly.texParam.RepeatS_Enable;
+          const bool repeatT = rawPoly.texParam.RepeatT_Enable;
+          const bool mirrorS = rawPoly.texParam.MirroredRepeatS_Enable;
+          const bool mirrorT = rawPoly.texParam.MirroredRepeatT_Enable;
+          
+          if (repeatS && mirrorS) {
+            polyAttr.wrapModeS = 2; // Mirror
+          } else if (repeatS) {
+            polyAttr.wrapModeS = 1; // Repeat
+          } else {
+            polyAttr.wrapModeS = 0; // Clamp
+          }
+          
+          if (repeatT && mirrorT) {
+            polyAttr.wrapModeT = 2; // Mirror
+          } else if (repeatT) {
+            polyAttr.wrapModeT = 1; // Repeat
+          } else {
+            polyAttr.wrapModeT = 0; // Clamp
+          }
+        } else {
+          polyAttr.texScaleS = 1.0f;
+          polyAttr.texScaleT = 1.0f;
+          polyAttr.wrapModeS = 0;
+          polyAttr.wrapModeT = 0;
+        }
+      } else {
+        polyAttr.texScaleS = 1.0f; // Not used for untextured polygons
+        polyAttr.texScaleT = 1.0f;
+        polyAttr.wrapModeS = 0;
+        polyAttr.wrapModeT = 0;
+      }
 
       [_renderCommandEncoder setFragmentBytes:&polyAttr
                                        length:sizeof(PolygonAttributes)
                                       atIndex:0];
 
       // draw the polygon
-      [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                        indexCount:indexCount
-                                         indexType:MTLIndexTypeUInt16
-                                       indexBuffer:_indexBuffer
-                                 indexBufferOffset:indexOffset * sizeof(u16)];
+      if (indexCount > 0) {
+        [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                          indexCount:indexCount
+                                           indexType:MTLIndexTypeUInt16
+                                         indexBuffer:_indexBuffer
+                                   indexBufferOffset:indexOffset * sizeof(u16)];
+      }
 
       // increment the index offset
       indexOffset += indexCount;
@@ -1098,7 +1428,10 @@ Render3DError MetalRender::InitializeRenderTargets(size_t width,
                                    width:width
                                   height:height
                                mipmapped:NO];
-  depthTexDescriptor.usage = MTLTextureUsageRenderTarget;
+  // Need both RenderTarget and ShaderRead since postprocessing shaders read
+  // depth
+  depthTexDescriptor.usage =
+      MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
   depthTexDescriptor.storageMode = MTLStorageModeShared;
   _depthTexture = [_device newTextureWithDescriptor:depthTexDescriptor];
   if (_depthTexture == nil) {
@@ -1277,6 +1610,31 @@ Render3DError MetalRender::InitializeSamplerState() {
     return RENDER3DERROR_INVALID_BINDING;
   }
 
+  // Create a 1x1 white texture for untextured polygons
+  // When texturing is disabled, we bind this white texture so the shader
+  // samples (1,1,1,1) which preserves the vertex colors
+  MTLTextureDescriptor *whiteTexDesc = [MTLTextureDescriptor 
+      texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                   width:1
+                                  height:1
+                               mipmapped:NO];
+  whiteTexDesc.usage = MTLTextureUsageShaderRead;
+  whiteTexDesc.storageMode = MTLStorageModeShared;
+  
+  _dummyWhiteTexture = [_device newTextureWithDescriptor:whiteTexDesc];
+  if (_dummyWhiteTexture == nil) {
+    NSLog(@"Error: Failed to create dummy white texture");
+    return RENDER3DERROR_INVALID_BINDING;
+  }
+  
+  // Fill the texture with white (255, 255, 255, 255)
+  uint32_t whitePixel = 0xFFFFFFFF;
+  MTLRegion region = MTLRegionMake2D(0, 0, 1, 1);
+  [_dummyWhiteTexture replaceRegion:region
+                        mipmapLevel:0
+                          withBytes:&whitePixel
+                        bytesPerRow:4];
+
   return RENDER3DERROR_NOERR;
 }
 
@@ -1304,6 +1662,9 @@ Render3DError MetalRender::PostprocessFramebuffer() {
     // Create a render command encoder for the postprocessing pass
     id<MTLRenderCommandEncoder> encoder =
         [_commandBuffer renderCommandEncoderWithDescriptor:postprocessPass];
+    if (encoder == nil) {
+      return RENDER3DERROR_INVALID_BUFFER;
+    }
     [encoder setLabel:@"DeSmuMe 3D Postprocessing Command Encoder"];
 
     MTLViewport viewport = {
@@ -1385,6 +1746,9 @@ Render3DError MetalRender::EndRender() {
   // Commit the command buffer and wait for it to complete
   [_commandBuffer commit];
   [_commandBuffer waitUntilCompleted];
+  
+  // Release the command buffer to prevent reuse of committed buffers
+  _commandBuffer = nil;
 
   // Unbind the renderer to trigger framebuffer readback
   _colorOut->UnbindRenderer(this->_lastBoundColorOut);
@@ -1473,14 +1837,23 @@ Render3DError MetalRender::SetupTexture(const POLY &thePoly,
   // polygons can disable texturing even if the texture is loaded
   // (for flat-shaped polygons or when the texture format is TEXMODE_NONE)
   if (!theTexture->IsSamplingEnabled()) {
+    // For untextured polygons, bind a white dummy texture
+    // This ensures the shader samples (1,1,1,1) which will preserve vertex colors
+    if (_dummyWhiteTexture != nil) {
+      [_renderCommandEncoder setFragmentTexture:_dummyWhiteTexture atIndex:0];
+      [_renderCommandEncoder setFragmentSamplerState:_samplerStateClampNearest atIndex:0];
+    }
     return RENDER3DERROR_NOERR;
   }
 
   // Get the Metal Texture ID
   id<MTLTexture> texID = theTexture->GetTexID();
   if (texID == nil || !theTexture->IsTexInited()) {
-    // We cannot bind the texture as it might not be initialized yet
-    // texture loading might have failed
+    // Bind white dummy texture as fallback
+    if (_dummyWhiteTexture != nil) {
+      [_renderCommandEncoder setFragmentTexture:_dummyWhiteTexture atIndex:0];
+      [_renderCommandEncoder setFragmentSamplerState:_samplerStateClampNearest atIndex:0];
+    }
     return RENDER3DERROR_NOERR;
   }
 
@@ -1776,12 +2149,44 @@ MetalTexture::~MetalTexture() {
 }
 
 void MetalTexture::Load(void *targetBuffer) {
-  // Call base class to decode the texture from NDS format into our unpack
-  // buffer The base class TextureStore::Load will call
-  // Unpack<TexFormat_32bpp> which converts the NDS texture format to
-  // RGBA8888 pixels in _unpackBuffer
-  Render3DTexture::Load(_unpackBuffer);
-
+  // Force reload from VRAM to ensure we have fresh texture data
+  this->VRAMCompareAndUpdate();
+  
+  // Proceed with normal loading - unpack the texture
+  // We'll validate the result after unpacking
+  Render3DTexture::Load(targetBuffer);
+  
+  // Check if unpacking succeeded (produces non-zero data)
+  // This is the definitive check - if unpacked data is all zeros, texture isn't ready
+  const size_t pixelCount = this->_sizeS * this->_sizeT;
+  const u32 *buf = (const u32 *)targetBuffer;
+  bool hasPixelData = false;
+  
+  // For small textures, check all pixels. For larger textures, sample more pixels
+  const size_t checkCount = (pixelCount <= 256) ? pixelCount : std::min<size_t>(256, pixelCount);
+  for (size_t i = 0; i < checkCount; i++) {
+    if (buf[i] != 0) {
+      hasPixelData = true;
+      break;
+    }
+  }
+  
+  if (!hasPixelData) {
+    // Unpacking produced empty data - could be:
+    // 1. Texture not ready yet (VRAM empty)
+    // 2. Valid transparent texture (all pixels are transparent black)
+    // For now, we'll accept transparent textures and let them render
+    // (they'll appear as transparent/black, which is correct)
+    
+    // Only reject if this is a very small texture (likely to be invalid if all zeros)
+    // For larger textures, accept them even if all zeros (might be intentionally transparent)
+    if (pixelCount <= 64) {
+      // Small texture with all zeros - likely invalid, keep trying
+      this->_isLoadNeeded = true;
+      return;  // Don't create Metal texture
+    }
+  }
+  
   // Apply deposterization if enabled
   // The base class sets up _deposterizeSrcSurface and
   // _deposterizeDstSurface
@@ -1795,10 +2200,11 @@ void MetalTexture::Load(void *targetBuffer) {
   const size_t texWidth = this->_sizeS;
   const size_t texHeight = this->_sizeT;
 
-  // Use the unpacked texture data from our buffer
-  const u32 *texData = _unpackBuffer; // RGBA8888 format
+  // Use the unpacked texture data from the target buffer (where base class wrote it)
+  const u32 *texData = (const u32 *)targetBuffer; // RGBA8888 format
 
   // Create Metal texture descriptor
+  // Nintendo DS textures are unpacked to RGBA8888 format
   MTLTextureDescriptor *texDescriptor = [MTLTextureDescriptor
       texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
                                    width:texWidth
@@ -1811,8 +2217,6 @@ void MetalTexture::Load(void *targetBuffer) {
   // Create the Metal texture
   _texID = [_device newTextureWithDescriptor:texDescriptor];
   if (_texID == nil) {
-    // Allocation failed - mark for retry 
-    this->_isLoadNeeded = true;
     return;
   }
 
@@ -1835,8 +2239,7 @@ u32 *MetalTexture::GetUnpackBuffer() const { return _unpackBuffer; }
 MetalRenderColorOut::MetalRenderColorOut(MTLDevicePtr device, size_t w,
                                          size_t h)
     : Render3DColorOut(), _device(device), _colorTexture(nil),
-      _masterBuffer32(nullptr), _readbackBuffer{nullptr, nullptr},
-      _needsColorConversion(false) {
+      _masterBuffer32(nullptr), _readbackBuffer{nullptr, nullptr} {
   // set the frame buffer dimension
   this->_framebufferWidth = w;
   this->_framebufferHeight = h;
@@ -1888,8 +2291,6 @@ MetalRenderColorOut::~MetalRenderColorOut() {
   // nullify the device
   _device = nil;
 
-  // nullify the needs color conversion flag
-  _needsColorConversion = false;
   NSLog(@"MetalRenderColorOut destroyed");
 }
 
@@ -1899,15 +2300,9 @@ void MetalRenderColorOut::Reset() {
   }
 }
 
-void MetalRenderColorOut::SetColorFormat(NDSColorFormat theFormat) {
-  // Call base class implementation first
-  Render3DColorOut::SetColorFormat(theFormat);
-
-  // Metal natively uses RGBA8Unorm format (8 bits per channel)
-  // The DS uses BGR666_Rev format (6 bits per RGB, 5 bits for alpha)
-  // We need conversion when the requested format is BGR666_Rev
-  _needsColorConversion = (theFormat == NDSColorFormat_BGR666_Rev);
-}
+// Note: SetColorFormat is NOT virtual in the base class Render3DColorOut,
+// so we cannot override it. Instead, we check this->_format directly in UnbindRenderer.
+// The base class SetColorFormat() will set this->_format for us.
 
 size_t MetalRenderColorOut::BindRead32() {
   return this->Render3DColorOut::BindRead32();
@@ -1950,11 +2345,14 @@ size_t MetalRenderColorOut::BindRenderer() {
 
 void MetalRenderColorOut::UnbindRenderer(const size_t idxRead) {
   if ((idxRead > 1) || (this->_state[idxRead] == AsyncReadState_Disabled)) {
+    printf("Metal 3D ColorOut: UnbindRenderer - invalid index or disabled (idx=%zu)\n", idxRead);
     return;
   }
 
   // Call base class to update state
   this->Render3DColorOut::UnbindRenderer(idxRead);
+
+  // printf("Metal 3D ColorOut: UnbindRenderer - reading back framebuffer (idx=%zu)\n", idxRead);
 
   // Copy texture data from GPU memory to CPU accessible buffer
   if (_colorTexture != nil && _readbackBuffer[idxRead] != nullptr) {
@@ -1972,10 +2370,18 @@ void MetalRenderColorOut::UnbindRenderer(const size_t idxRead) {
                   bytesPerRow:bytesPerRow
                    fromRegion:region
                   mipmapLevel:0];
+      
 
-      // Optionally, perform color format conversion if needed
-      if (_needsColorConversion && (_format == NDSColorFormat_BGR666_Rev)) {
+      // Perform color format conversion if needed (Metal RGBA -> DS BGR)
+      // The format is set by the base class SetColorFormat() method
+      if (this->_format == NDSColorFormat_BGR666_Rev) {
         _ConvertColorFormat(_readbackBuffer[idxRead], _framebufferPixelCount);
+      } else if (this->_format == NDSColorFormat_BGR888_Rev) {
+        // BGR888_Rev format - Metal outputs RGBA8, display expects BGR8
+        // We need to swap R and B channels (RGBA -> BGRA)
+        ColorspaceCopyBuffer32<true, false>((u32 *)_readbackBuffer[idxRead], 
+                                           (u32 *)_readbackBuffer[idxRead],
+                                           _framebufferPixelCount);
       }
     }
   }
@@ -2064,8 +2470,66 @@ Render3DError MetalRenderColorOut::FillZero() {
 // Fill the framebuffer with a color
 Render3DError MetalRenderColorOut::FillColor32(const Color4u8 *src,
                                                const bool isSrcNativeSize) {
-  // May not need this method for Metal
-  return RENDER3DERROR_NOERR;
+  Render3DError error = RENDER3DERROR_NOERR;
+
+  const u32 *__restrict src32 = (const u32 *__restrict)src;
+  u32 *__restrict mutableFramebuffer32 =
+      (u32 *__restrict)this->GetInUseFramebuffer32();
+
+  if ((src32 == NULL) || (mutableFramebuffer32 == NULL)) {
+    error = RENDER3DERROR_INVALID_BUFFER;
+    return error;
+  }
+
+  // Ensure rendering is complete before modifying framebuffer
+  if (this->_renderer != NULL) {
+    this->_renderer->RenderFinish();
+    this->_renderer->RenderFlush(false, false);
+    this->_renderer->SetRenderNeedsFinish(false);
+  }
+
+  const size_t w = this->_framebufferWidth;
+  const size_t h = this->_framebufferHeight;
+  const bool isDstNativeSize = ((w == GPU_FRAMEBUFFER_NATIVE_WIDTH) &&
+                                (h == GPU_FRAMEBUFFER_NATIVE_HEIGHT));
+
+  if (isSrcNativeSize) {
+    if (isDstNativeSize) {
+      // Both source and destination are native size - direct copy or convert
+      if (this->_format == NDSColorFormat_BGR666_Rev) {
+        // Need R/B swap: Metal RGBA -> DS BGR
+        ColorspaceConvertBuffer8888To6665<true, false>(
+            src32, mutableFramebuffer32,
+            GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+      } else {
+        ColorspaceCopyBuffer32<false, false>(src32, mutableFramebuffer32,
+                                             GPU_FRAMEBUFFER_NATIVE_WIDTH *
+                                                 GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+      }
+    } else {
+      // Source is native size, destination is custom size - need to expand
+      if (this->_format == NDSColorFormat_BGR666_Rev) {
+        // Convert in-place first, then expand. Need R/B swap: Metal RGBA -> DS BGR
+        ColorspaceConvertBuffer8888To6665<true, false>(
+            src32, (u32 *)src32,
+            GPU_FRAMEBUFFER_NATIVE_WIDTH * GPU_FRAMEBUFFER_NATIVE_HEIGHT);
+      }
+
+      // Expand each line using the GPU line info
+      for (size_t l = 0; l < GPU_FRAMEBUFFER_NATIVE_HEIGHT; l++) {
+        const GPUEngineLineInfo &lineInfo = GPU->GetLineInfoAtIndex(l);
+        CopyLineExpandHinted<0x3FFF, true, false, false, 4>(
+            lineInfo, src32, mutableFramebuffer32);
+        src32 += GPU_FRAMEBUFFER_NATIVE_WIDTH;
+        mutableFramebuffer32 += lineInfo.pixelCount;
+      }
+    }
+  } else {
+    // Source is already at custom size - direct copy
+    memcpy(mutableFramebuffer32, src32, this->_framebufferSize32);
+  }
+
+  return error;
 }
 
 void MetalRenderColorOut::SetColorTexture(MTLTexturePtr texture) {
@@ -2077,69 +2541,57 @@ void MetalRenderColorOut::_ConvertColorFormat(Color4u8 *buffer,
   // The Nintendo DS uses BGR666_Rev format for the framebuffer
   // (6 bits per RGB channel, 5 bits for alpha)
   // Metal uses RGBA8Unorm format (8 bits per channel)
-  // This function converts from 8888 to 6665 by reducing bit depth
-  // Note: No channel swapping needed; "BGR" refers to byte order in memory
-
-  // Use the standard colorspace conversion function for consistency
+  // Testing shows NO R/B swap gives correct colors (display handles BGR ordering)
+  // But bit depth reduction (8888 -> 6665) makes colors too dark
+  
+  // Convert without R/B swap - just reduce bit depth
   ColorspaceConvertBuffer8888To6665<false, false>((u32 *)buffer, (u32 *)buffer,
                                                   pixelCount);
 }
 
-// GPU3DInterface-compatible factory functions
-static Render3D *MetalRendererCreate() {
-  MetalRender *newRenderer = nullptr;
-
-  try {
-    newRenderer = new MetalRender();
-  } catch (const std::exception &e) {
-    NSLog(@"Failed to create MetalRender: %s", e.what());
-    return nullptr;
-  } catch (...) {
-    NSLog(@"Failed to create MetalRender: unknown error");
-    return nullptr;
-  }
-
-  return newRenderer;
+// Creation functions
+Render3D* MetalRendererCreate()
+{
+    // Check if shared resources are available
+    if (metal_getSharedDevice() == nil) {
+        printf("Metal 3D: ERROR - No shared Metal resources. "
+               "Metal display must be initialized first.\n");
+        return nullptr;
+    }
+    
+    // Two-phase initialization pattern (matches OpenGL renderer):
+    // 1. Create object (constructor never fails)
+    // 2. Initialize resources (can fail, returns error code)
+    // 3. On failure, delete and return NULL
+    MetalRender *newRenderer = new MetalRender();
+    
+    Render3DError error = newRenderer->InitResources();
+    if (error != RENDER3DERROR_NOERR) {
+        delete newRenderer;
+        return nullptr;
+    }
+    
+    return newRenderer;
 }
 
-static void MetalRendererDestroy() {
-  if (CurrentRenderer != BaseRenderer) {
-    MetalRender *oldRenderer = (MetalRender *)CurrentRenderer;
-    CurrentRenderer = BaseRenderer;
-    delete oldRenderer;
-  }
+void MetalRendererDestroy()
+{
+    if (CurrentRenderer == BaseRenderer)
+    {
+        return;
+    }
+    
+    Render3DBaseDestroy();
+    
+    // Release shared resources reference
+    @autoreleasepool {
+        if (SharedMetalData != nil)
+        {
+            [(id)SharedMetalData release];
+            SharedMetalData = nil;
+        }
+    }
 }
 
-// GPU3DInterface declaration for Metal renderer
-GPU3DInterface gpu3DMetal = {"Metal", MetalRendererCreate,
-                             MetalRendererDestroy};
-
-// C-style opaque factory functions implementation
-extern "C" {
-
-void *MetalRendererCreateOpaque(void) {
-  MetalRender *renderer = nullptr;
-
-  try {
-    renderer = new MetalRender();
-  } catch (const std::exception &e) {
-    NSLog(@"Failed to create MetalRender: %s", e.what());
-    return nullptr;
-  } catch (...) {
-    NSLog(@"Failed to create MetalRender: unknown error");
-    return nullptr;
-  }
-
-  return static_cast<void *>(renderer);
-}
-
-void MetalRendererDestroyOpaque(void *renderer) {
-  if (renderer == nullptr) {
-    return;
-  }
-
-  MetalRender *metalRenderer = static_cast<MetalRender *>(renderer);
-  delete metalRenderer;
-}
-
-} // extern "C"
+// GPU3DInterface definition for Metal renderer
+GPU3DInterface gpu3DMetal = {"Metal", MetalRendererCreate, MetalRendererDestroy};
