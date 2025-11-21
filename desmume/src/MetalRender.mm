@@ -134,9 +134,13 @@ MetalRender::MetalRender()
 }
 
 MetalRender::~MetalRender() {
-  // Clean up - ARC will handle the rest
-  _device = nil;
+  // Release objects that were explicitly retained in InitResources()
+  [_commandQueue release];
   _commandQueue = nil;
+  [_device release];
+  _device = nil;
+  
+  // These are either autoreleased or nil (if InitResources failed partway)
   _commandBuffer = nil;
   _pipelineState = nil;
   _renderCommandEncoder = nil;
@@ -157,6 +161,15 @@ MetalRender::~MetalRender() {
   _samplerStateRepeatLinear = nil;
   _samplerStateMirrorNearest = nil;
   _samplerStateMirrorLinear = nil;
+
+  // Clean up postprocessing resources
+  _pipelineStateEdgeMark = nil;
+  _pipelineStateFog = nil;
+  _polygonIDTexture = nil;
+  _fogAttributesTexture = nil;
+  _fogDensityTexture = nil;
+  _postprocessVertexBuffer = nil;
+  _renderStatesBuffer = nil;
 
   // Clean up the color output object
   if (_metalColorOut != nullptr) {
@@ -184,11 +197,135 @@ MetalRender::ApplyRenderingSettings(const GFX3D_State &renderState) {
   return RENDER3DERROR_NOERR;
 }
 
-Render3DError MetalRender::Reset() { return RENDER3DERROR_NOERR; }
+Render3DError MetalRender::Reset() {
+  // Call the base class implementation to reset the common settings
+  Render3DError error = this->Render3D::Reset();
+  if (error != RENDER3DERROR_NOERR) {
+    return error;
+  }
 
-Render3DError MetalRender::RenderPowerOff() { return RENDER3DERROR_NOERR; }
+  // Reset Metal-specific rendering settings
+  _enableAlphaBlending = false;
+  _enableAntialiasing = false;
 
-Render3DError MetalRender::RenderFinish() { return RENDER3DERROR_NOERR; }
+  texCache.Reset();
+  if (_metalColorOut != nullptr) {
+    _metalColorOut->Reset();
+  }
+  return RENDER3DERROR_NOERR;
+}
+
+Render3DError MetalRender::RenderPowerOff() {
+  // First, call the base class implementation to handle common power-off logic
+  // This will set _isPoweredOn = false and call _colorOut->FillZero()
+  Render3DError error = this->Render3D::RenderPowerOff();
+  if (error != RENDER3DERROR_NOERR) {
+    return error;
+  }
+
+  // Wait for any pending Metal GPU commands to complete before clearing
+  if (_commandBuffer != nil) {
+    [_commandBuffer commit];
+    [_commandBuffer waitUntilCompleted];
+    _commandBuffer = nil;
+  }
+
+  // Clear Metal-specific render state
+  // When powered off, we need to ensure all render targets are in a clean state
+  if (_renderPassDescriptor != nil && _colorTexture != nil) {
+    @autoreleasepool {
+      // Create a temporary command buffer to clear all render targets
+      id<MTLCommandBuffer> clearCommandBuffer = [_commandQueue commandBuffer];
+      if (clearCommandBuffer != nil) {
+        // Set up clear operations for all attachments
+        _renderPassDescriptor.colorAttachments[0].loadAction =
+            MTLLoadActionClear;
+        _renderPassDescriptor.colorAttachments[0].clearColor =
+            MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+        _renderPassDescriptor.colorAttachments[1].loadAction =
+            MTLLoadActionClear;
+        _renderPassDescriptor.colorAttachments[1].clearColor =
+            MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+        _renderPassDescriptor.colorAttachments[2].loadAction =
+            MTLLoadActionClear;
+        _renderPassDescriptor.colorAttachments[2].clearColor =
+            MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+        if (_renderPassDescriptor.depthAttachment.texture != nil) {
+          _renderPassDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
+          _renderPassDescriptor.depthAttachment.clearDepth = 0.0;
+        }
+
+        if (_renderPassDescriptor.stencilAttachment.texture != nil) {
+          _renderPassDescriptor.stencilAttachment.loadAction =
+              MTLLoadActionClear;
+          _renderPassDescriptor.stencilAttachment.clearStencil = 0;
+        }
+
+        // Create a render command encoder to execute the clear
+        id<MTLRenderCommandEncoder> clearEncoder = [clearCommandBuffer
+            renderCommandEncoderWithDescriptor:_renderPassDescriptor];
+        if (clearEncoder != nil) {
+          [clearEncoder endEncoding];
+        }
+
+        // Commit and wait for the clear operation to complete
+        [clearCommandBuffer commit];
+        [clearCommandBuffer waitUntilCompleted];
+      }
+    }
+  }
+
+  // Reset Metal-specific rendering flags
+  _enableAlphaBlending = false;
+  _enableAntialiasing = false;
+
+  return RENDER3DERROR_NOERR;
+}
+
+Render3DError MetalRender::RenderFinish() {
+  // Check if there's actually rendering that needs to finish
+  // The base class manages this flag
+  if (!this->_renderNeedsFinish) {
+    return RENDER3DERROR_NOERR;
+  }
+
+  // Ensure all GPU commands have completed before proceeding
+  // This is critical as RenderFinish() must block until all rendering is done
+  if (_commandBuffer != nil) {
+    // If there's still an active command buffer, commit it and wait
+    [_commandBuffer commit];
+    [_commandBuffer waitUntilCompleted];
+    _commandBuffer = nil;
+  }
+
+  // Wait for the command queue to complete all pending work
+  // This ensures any previously submitted command buffers are also finished
+  if (_commandQueue != nil) {
+    // Create a temporary command buffer to act as a fence
+    @autoreleasepool {
+      id<MTLCommandBuffer> fenceBuffer = [_commandQueue commandBuffer];
+      if (fenceBuffer != nil) {
+        [fenceBuffer commit];
+        [fenceBuffer waitUntilCompleted];
+      }
+    }
+  }
+
+  // Call the base class implementation to set the flush flags
+  // This will set _renderNeedsFlushMain and _renderNeedsFlush16 to true
+  Render3DError error = this->Render3D::RenderFinish();
+  if (error != RENDER3DERROR_NOERR) {
+    return error;
+  }
+
+  // Evict any expired textures from the cache now that rendering is complete
+  texCache.Evict();
+
+  return RENDER3DERROR_NOERR;
+}
 
 Render3DError MetalRender::RenderFlush(bool willFlushBuffer32,
                                        bool willFlushBuffer16) {
@@ -485,7 +622,8 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   }
 
   // Calculate the buffer size, need space for all converted vertices
-  // Note: We use MetalVertex (with converted floats), not NDSVertex (with s32)
+  // Note: We use MetalVertex (with converted floats), not NDSVertex (with
+  // s32)
   size_t vertexBufferSize = renderGList.rawVertCount * sizeof(MetalVertex);
 
   // Need space for index buffer, quads will be converted to triangles.
@@ -544,6 +682,12 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   size_t indexCount = 0;
 
   for (size_t i = 0; i < _clippedPolyCount; i++) {
+    // Bounds check to prevent buffer overflow
+    if (i >= CLIPPED_POLYLIST_SIZE) {
+      // This should never happen, but protect against buffer overflow
+      break;
+    }
+
     const CPoly &cPoly = _clippedPolyList[i];
     const POLY &rawPoly = _rawPolyList[cPoly.index];
     const size_t polyType = rawPoly.type; // number of vertices in the polygon
@@ -611,7 +755,8 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     states->fogColor[2] = (float)((renderState.fogColor >> 10) & 0x1F) / 31.0f;
     states->fogColor[3] = (float)((renderState.fogColor >> 15) & 0x1F) / 31.0f;
 
-    // Copy fog color to cached render states for use in PostprocessFramebuffer
+    // Copy fog color to cached render states for use in
+    // PostprocessFramebuffer
     _currentRenderStates.fogColor[0] = states->fogColor[0];
     _currentRenderStates.fogColor[1] = states->fogColor[1];
     _currentRenderStates.fogColor[2] = states->fogColor[2];
@@ -1306,6 +1451,12 @@ MetalRender::ClearUsingValues(const Color4u8 &clearColor6665,
 
 Render3DError MetalRender::SetupTexture(const POLY &thePoly,
                                         size_t polyRenderIndex) {
+  // Bounds check to prevent buffer overflow
+  if (polyRenderIndex >= CLIPPED_POLYLIST_SIZE) {
+    return RENDER3DERROR_NOERR; // Skip texture setup if index is out of
+                                // bounds
+  }
+
   // Get the metal texture for this polygon from the texture cache
   MetalTexture *theTexture = (MetalTexture *)_textureList[polyRenderIndex];
 
@@ -1655,6 +1806,8 @@ void MetalTexture::Load(void *targetBuffer) {
   // Create the Metal texture
   _texID = [_device newTextureWithDescriptor:texDescriptor];
   if (_texID == nil) {
+    // Allocation failed - mark for retry 
+    this->_isLoadNeeded = true;
     return;
   }
 
