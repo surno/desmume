@@ -82,37 +82,120 @@ std::wstring s2ws(const std::string& str)
 
 EXPORTED int desmume_init()
 {
+    // Pure headless initialization - no SDL, dummy audio
     NDS_Init();
-    // TODO: Option to disable audio
-#ifdef INCLUDE_SDL
-    SPU_ChangeSoundCore(SNDCORE_SDL, 735 * 4);
-    SPU_SetSynchMode(0, 0);
-    SPU_SetVolume(100);
-    SNDSDLSetAudioVolume(100);
-#endif
-    // TODO: Option to configure 3d
+    
+    // Use dummy audio by default (silent, no SDL dependency)
+    SPU_ChangeSoundCore(SNDCORE_DUMMY, 0);
+    
+    // Use software rasterizer by default
     GPU->Change3DRendererByID(RENDERID_SOFTRASTERIZER);
-    // TODO: Without SDL init?
-#ifdef INCLUDE_SDL
-    if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) == -1) {
-        fprintf(stderr, "Error trying to initialize SDL: %s\n",
-                SDL_GetError());
-        return -1;
-    }
-#endif
+    
     execute = false;
     return 0;
+}
+
+EXPORTED int desmume_init_sdl()
+{
+#ifdef INCLUDE_SDL
+    // Only init timer - video is for draw_window_init()
+    if (SDL_WasInit(SDL_INIT_TIMER) == 0) {
+        if (SDL_Init(SDL_INIT_TIMER) == -1) {
+            fprintf(stderr, "SDL_Init(TIMER) failed: %s\n", SDL_GetError());
+            return -1;
+        }
+    }
+    return 0;
+#else
+    return -1;  // SDL not compiled in
+#endif
+}
+
+EXPORTED int desmume_init_with_options(const DesmumeInitOptions *options)
+{
+    if (options == NULL) {
+        return desmume_init();  // Fall back to defaults
+    }
+    
+    NDS_Init();
+    
+    // Audio core selection
+    int audio_core = options->audio_core;
+    int buffer_size = options->audio_buffer_size > 0 
+                      ? options->audio_buffer_size 
+                      : 735 * 4;  // Default buffer
+    
+#ifndef INCLUDE_SDL
+    // Force dummy if SDL requested but not compiled in
+    if (audio_core == DESMUME_AUDIO_SDL) {
+        audio_core = DESMUME_AUDIO_DUMMY;
+    }
+#endif
+    
+    if (SPU_ChangeSoundCore(audio_core, buffer_size) != 0) {
+        // Fallback to dummy on failure
+        SPU_ChangeSoundCore(SNDCORE_DUMMY, 0);
+    }
+    
+    if (audio_core != DESMUME_AUDIO_DUMMY) {
+        SPU_SetSynchMode(0, 0);
+        SPU_SetVolume(100);
+    }
+    
+    // 3D renderer selection (enum values match RENDERID_* constants)
+    int renderer = options->renderer_3d;
+#ifndef ENABLE_APPLE_METAL
+    if (renderer == DESMUME_RENDERER_METAL) {
+        renderer = DESMUME_RENDERER_SOFTRASTERIZER;
+    }
+#endif
+    GPU->Change3DRendererByID(renderer);
+    
+    // SDL timer (optional)
+    if (options->init_sdl_timer) {
+#ifdef INCLUDE_SDL
+        if (SDL_Init(SDL_INIT_TIMER) == -1) {
+            fprintf(stderr, "SDL_Init(TIMER) failed: %s\n", SDL_GetError());
+            // Non-fatal: continue without timer
+        }
+#endif
+    }
+    
+    execute = false;
+    return 0;
+}
+
+EXPORTED int desmume_audio_set_core(int core_id, int buffer_size)
+{
+#ifndef INCLUDE_SDL
+    if (core_id == DESMUME_AUDIO_SDL) {
+        return -1;  // SDL not available
+    }
+#endif
+    
+    int buf = buffer_size > 0 ? buffer_size : 735 * 4;
+    return SPU_ChangeSoundCore(core_id, buf);
+}
+
+EXPORTED int desmume_audio_get_core(void)
+{
+    return SPU_currentCoreNum;
 }
 
 EXPORTED void desmume_free()
 {
     execute = false;
     NDS_DeInit();
+    
 #ifdef ENABLE_APPLE_METAL
     desmume_metal_bootstrap_cleanup();
 #endif
+
 #ifdef INCLUDE_SDL
-    SDL_Quit();
+    // Only quit if SDL was initialized
+    if (SDL_WasInit(0) != 0) {
+        SDL_Quit();
+    }
 #endif
 }
 
@@ -189,10 +272,11 @@ EXPORTED void desmume_cycle(BOOL with_joystick)
 EXPORTED int desmume_sdl_get_ticks()
 {
 #ifdef INCLUDE_SDL
-    return SDL_GetTicks();
-#else
-    return 0;
+    if (SDL_WasInit(SDL_INIT_TIMER)) {
+        return SDL_GetTicks();
+    }
 #endif
+    return 0;  // Return 0 if SDL timer not initialized
 }
 
 #ifdef INCLUDE_OPENGL_2D
@@ -372,17 +456,13 @@ EXPORTED void desmume_gpu_set_layer_sub_enable_state(int layer_index, BOOL the_s
 
 EXPORTED int desmume_volume_get()
 {
-#ifdef INCLUDE_SDL
-    return SNDSDLGetAudioVolume();
-#else
-    return 0;
-#endif
+    // Use SPU's internal volume tracking (works with any backend)
+    return SPU_GetVolume();
 }
+
 EXPORTED void desmume_volume_set(int volume)
 {
-#ifdef INCLUDE_SDL
-    SNDSDLSetAudioVolume(volume);
-#endif
+    SPU_SetVolume(volume);
 }
 
 EXPORTED unsigned char desmume_memory_read_byte(int address)

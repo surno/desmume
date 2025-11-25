@@ -202,7 +202,13 @@ EXPORTED int desmume_draw_window_init(BOOL auto_pause, BOOL use_opengl_if_possib
 {
     opengl_2d = use_opengl_if_possible;
 
-    // SDL_Init is called in desmume_init.
+    // Ensure SDL video is initialized (idempotent)
+    if (SDL_WasInit(SDL_INIT_VIDEO) == 0) {
+        if (SDL_Init(SDL_INIT_VIDEO) == -1) {
+            fprintf(stderr, "SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+            return -1;
+        }
+    }
 
 #ifdef INCLUDE_OPENGL_2D
     if (opengl_2d) {

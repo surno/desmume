@@ -66,8 +66,40 @@ struct SimpleDate {
     int millisecond;
 };
 
+// Sound core identifiers (runtime selection)
+enum DesmumeAudioCore {
+    DESMUME_AUDIO_DUMMY   = 0,  // No audio output
+    DESMUME_AUDIO_SDL     = 2,  // SDL audio (requires SDL build)
+};
+
+// 3D renderer identifiers (matches RENDERID_* values from render3D.h)
+enum Desmume3DRenderer {
+    DESMUME_RENDERER_NULL           = 0,
+    DESMUME_RENDERER_SOFTRASTERIZER = 1,
+    DESMUME_RENDERER_METAL          = 2000,  // macOS only (RENDERID_METAL)
+};
+
+// Initialization options for fine-grained control
+struct DesmumeInitOptions {
+    int audio_core;           // DESMUME_AUDIO_* constant
+    int audio_buffer_size;    // Buffer size in bytes (0 = default 2940)
+    int renderer_3d;          // DESMUME_RENDERER_* constant
+    int init_sdl_timer;       // 1 = init SDL timer subsystem, 0 = skip
+};
+
 EXPORTED int desmume_init(void);
 EXPORTED void desmume_free(void);
+
+// Initialize SDL subsystems (timer only; video is handled by draw_window_init)
+// Call AFTER desmume_init() if SDL features are needed
+EXPORTED int desmume_init_sdl(void);
+
+// Initialize with explicit options for full control
+EXPORTED int desmume_init_with_options(const DesmumeInitOptions *options);
+
+// Query/change audio core at runtime
+EXPORTED int desmume_audio_set_core(int core_id, int buffer_size);
+EXPORTED int desmume_audio_get_core(void);
 
 // 0 = Japanese, 1 = English, 2 = French, 3 = German, 4 = Italian, 5 = Spanish
 EXPORTED void desmume_set_language(u8 language);
