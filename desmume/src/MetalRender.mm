@@ -926,6 +926,9 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   u16 *indexPtr = (u16 *)[_indexBuffer contents];
   size_t indexCount = 0;
   vertexOffset = 0;
+  
+  // Maximum indices that can fit in the allocated buffer
+  const size_t maxIndexCount = indexBufferSize / sizeof(u16);
 
   for (size_t i = 0; i < _clippedPolyCount; i++) {
     const CPoly &cPoly = _clippedPolyList[i];
@@ -938,6 +941,12 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     if (!GFX3D_IsPolyWireframe(rawPoly) && polyType == 4 &&
         (rawPoly.vtxFormat == GFX3D_QUADS ||
          rawPoly.vtxFormat == GFX3D_QUAD_STRIP)) {
+      // Bounds check: ensure 6 indices can fit
+      if (indexCount + 6 > maxIndexCount) {
+        NSLog(@"MetalRender ERROR: Index buffer overflow prevented (quad). "
+              @"indexCount=%zu, maxIndexCount=%zu", indexCount, maxIndexCount);
+        break;
+      }
       indexPtr[indexCount++] = vertexOffset + 0;
       indexPtr[indexCount++] = vertexOffset + 1;
       indexPtr[indexCount++] = vertexOffset + 2;
@@ -948,6 +957,17 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
       // For triangles, or polygons with more/less vertices after clipping
       // Use triangle fan tessellation for polygons with 4+ vertices
       if (polyType >= 3) {
+        // Calculate indices needed for this polygon
+        const size_t indicesNeeded = (polyType - 2) * 3;
+        
+        // Bounds check: ensure all indices for this polygon can fit
+        if (indexCount + indicesNeeded > maxIndexCount) {
+          NSLog(@"MetalRender ERROR: Index buffer overflow prevented (fan). "
+                @"indexCount=%zu, indicesNeeded=%zu, maxIndexCount=%zu", 
+                indexCount, indicesNeeded, maxIndexCount);
+          break;
+        }
+        
         for (size_t j = 1; j < polyType - 1; j++) {
           indexPtr[indexCount++] = vertexOffset + 0;
           indexPtr[indexCount++] = vertexOffset + j;
@@ -1864,7 +1884,13 @@ Render3DError MetalRender::SetupTexture(const POLY &thePoly,
   MetalTexture *theTexture = (MetalTexture *)_textureList[polyRenderIndex];
 
   if (theTexture == nil) {
-    return RENDER3DERROR_INVALID_BUFFER;
+    // Bind white dummy texture as fallback to prevent undefined shader behavior
+    // The shader expects a texture at binding index 0, so we must always bind something
+    if (_dummyWhiteTexture != nil) {
+      [_renderCommandEncoder setFragmentTexture:_dummyWhiteTexture atIndex:0];
+      [_renderCommandEncoder setFragmentSamplerState:_samplerStateClampNearest atIndex:0];
+    }
+    return RENDER3DERROR_NOERR;
   }
 
   // Check if the texture sampling is enabled

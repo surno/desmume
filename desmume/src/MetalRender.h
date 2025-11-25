@@ -11,9 +11,9 @@
 @protocol MTLDepthStencilState;
 @protocol MTLBuffer;
 @protocol MTLTexture;
-@protocol MTLRenderPassDescriptor;
 @protocol MTLRenderCommandEncoder;
 @protocol MTLSamplerState;
+@class MTLRenderPassDescriptor;
 @class MTLTextureDescriptor;
 typedef id<MTLDevice> MTLDevicePtr;
 typedef id<MTLCommandQueue> MTLCommandQueuePtr;
