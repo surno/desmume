@@ -132,14 +132,13 @@ EXPORTED int desmume_init_with_options(const DesmumeInitOptions *options)
     }
 #endif
     
-    if (SPU_ChangeSoundCore(audio_core, buffer_size) != 0) {
-        // Fallback to dummy on failure
-        SPU_ChangeSoundCore(SNDCORE_DUMMY, 0);
-    }
-    
-    if (audio_core != DESMUME_AUDIO_DUMMY) {
+    if (SPU_ChangeSoundCore(audio_core, buffer_size) == 0) {
+        // Success: configure the audio core
         SPU_SetSynchMode(0, 0);
         SPU_SetVolume(100);
+    } else {
+        // Failure: fallback to dummy (no configuration needed)
+        SPU_ChangeSoundCore(SNDCORE_DUMMY, 0);
     }
     
     // 3D renderer selection (enum values match RENDERID_* constants)
