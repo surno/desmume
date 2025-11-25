@@ -32,6 +32,9 @@
 #include "../../mc.h"
 #include "../../firmware.h"
 #include "../../armcpu.h"
+#ifdef ENABLE_APPLE_METAL
+#include "../../MetalRender.h"
+#endif
 #ifdef INCLUDE_SDL
 #include "../posix/shared/sndsdl.h"
 #include "../posix/shared/ctrlssdl.h"
@@ -39,6 +42,13 @@
 #include <locale>
 #include <codecvt>
 #include <string>
+
+#ifdef ENABLE_APPLE_METAL
+extern "C" {
+    extern int desmume_metal_bootstrap_init(void);
+    extern void desmume_metal_bootstrap_cleanup(void);
+}
+#endif
 
 #define SCREENS_PIXEL_SIZE 98304
 volatile bool execute = false;
@@ -57,6 +67,9 @@ SoundInterface_struct *SNDCoreList[] = {
 GPU3DInterface *core3DList[] = {
         &gpu3DNull,
         &gpu3DRasterize,
+#ifdef ENABLE_APPLE_METAL
+        &gpu3DMetal,
+#endif
         NULL
 };
 
@@ -94,6 +107,9 @@ EXPORTED void desmume_free()
 {
     execute = false;
     NDS_DeInit();
+#ifdef ENABLE_APPLE_METAL
+    desmume_metal_bootstrap_cleanup();
+#endif
 #ifdef INCLUDE_SDL
     SDL_Quit();
 #endif
@@ -234,6 +250,37 @@ EXPORTED extern BOOL desmume_has_opengl()
 }
 #else
 EXPORTED extern BOOL desmume_has_opengl()
+{
+    return false;
+}
+#endif
+
+#ifdef ENABLE_APPLE_METAL
+EXPORTED int desmume_init_metal()
+{
+    int result = desmume_metal_bootstrap_init();
+    if (result == 0) {
+        // Try to switch to Metal renderer
+        if (!GPU->Change3DRendererByID(RENDERID_METAL)) {
+            // Fall back to software rasterizer if Metal renderer fails
+            GPU->Change3DRendererByID(RENDERID_SOFTRASTERIZER);
+            return -1;
+        }
+    }
+    return result;
+}
+
+EXPORTED BOOL desmume_has_metal()
+{
+    return true;
+}
+#else
+EXPORTED int desmume_init_metal()
+{
+    return -1;
+}
+
+EXPORTED BOOL desmume_has_metal()
 {
     return false;
 }

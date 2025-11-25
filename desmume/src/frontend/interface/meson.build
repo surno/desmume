@@ -1,5 +1,5 @@
 project('desmume',
-  ['c', 'cpp'],
+  ['c', 'cpp', 'objcpp'],
   version: '2.7.10',
   meson_version: '>=0.45',
   default_options: [
@@ -224,7 +224,7 @@ if get_option('metal')
     # Add Metal and Foundation frameworks
     dep_metal = dependency('appleframeworks', modules: ['Metal', 'Foundation'])
     dependencies += dep_metal
-    add_global_arguments('-DENABLE_METAL', language: ['c', 'cpp'])
+    add_global_arguments('-DENABLE_APPLE_METAL', language: ['c', 'cpp', 'objcpp'])
     
     # Compile Metal shaders into a library
     metal_shader = custom_target('metal_shaders',
@@ -235,8 +235,11 @@ if get_option('metal')
       install: false,
     )
     
-    # Add Metal renderer source
-    libdesmume_src += ['../../MetalRender.mm']
+    # Add Metal renderer source and bootstrap
+    libdesmume_src += [
+      '../../MetalRender.mm',
+      'metal_bootstrap.mm',
+    ]
     
     message('Metal renderer enabled')
   else

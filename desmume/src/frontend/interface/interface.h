@@ -87,6 +87,9 @@ EXPORTED int desmume_sdl_get_ticks();
 EXPORTED void desmume_draw_opengl(GLuint *texture);
 #endif
 EXPORTED BOOL desmume_has_opengl();
+// Metal 3D renderer support (macOS only)
+EXPORTED int desmume_init_metal(void);
+EXPORTED BOOL desmume_has_metal(void);
 // ... or via an SDL window created by Desmume.
 #ifdef INCLUDE_SDL
 EXPORTED int desmume_draw_window_init(BOOL auto_pause, BOOL use_opengl_if_possible);

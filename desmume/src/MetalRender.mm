@@ -10,11 +10,16 @@
 #include "utils/colorspacehandler/colorspacehandler.h"
 
 #ifdef __OBJC__
+// Forward declaration - we don't need the full header for interface frontend
+@class MetalDisplayViewSharedData;
+// Only import full header for Cocoa frontend (not for interface frontend)
+#ifdef DESMUME_COCOA
 #import "frontend/cocoa/userinterface/MacMetalDisplayView.h"
 #endif
+#endif
 
-// Global shared Metal data
-static MetalDisplayViewSharedData *SharedMetalData = nil;
+// Global shared Metal data - use id type to work with both implementations
+static id SharedMetalData = nil;
 
 // Function pointer implementations
 bool (*metalrender_init)() = nullptr;
@@ -34,11 +39,15 @@ extern "C" void metal_setSharedResources(void *sharedData)
         
         if (sharedData != nullptr)
         {
-            SharedMetalData = (MetalDisplayViewSharedData *)sharedData;
+            SharedMetalData = (id)sharedData;
             [(id)SharedMetalData retain];
             
             printf("Metal 3D Renderer: Received shared Metal resources\n");
-            printf("  Device: %s\n", [[[SharedMetalData device] name] UTF8String]);
+            // Access device property directly (works with both MetalDisplayViewSharedData and MinimalMetalSharedData)
+            id<MTLDevice> device = [SharedMetalData device];
+            if (device != nil) {
+                printf("  Device: %s\n", [[device name] UTF8String]);
+            }
         }
     }
 }
@@ -46,11 +55,19 @@ extern "C" void metal_setSharedResources(void *sharedData)
 // Helper functions
 extern "C" MTLDevicePtr metal_getSharedDevice()
 {
+    if (SharedMetalData == nil) {
+        return nil;
+    }
+    // Access device property directly (works with both MetalDisplayViewSharedData and MinimalMetalSharedData)
     return [SharedMetalData device];
 }
 
 extern "C" MTLCommandQueuePtr metal_getSharedCommandQueue()
 {
+    if (SharedMetalData == nil) {
+        return nil;
+    }
+    // Access commandQueue property directly (works with both MetalDisplayViewSharedData and MinimalMetalSharedData)
     return [SharedMetalData commandQueue];
 }
 
