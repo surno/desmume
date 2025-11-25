@@ -141,6 +141,12 @@ EXPORTED u32 desmume_memory_get_next_instruction();
 // NOTE: This is a no-op with JIT enabled.
 EXPORTED void desmume_memory_set_next_instruction(u32 value);
 
+// CPU Emulation Engine (JIT) Configuration
+EXPORTED BOOL desmume_get_jit_enabled(void);
+EXPORTED void desmume_set_jit_enabled(BOOL enabled);
+EXPORTED u32 desmume_get_jit_max_block_size(void);
+EXPORTED void desmume_set_jit_max_block_size(u32 size);
+
 EXPORTED void desmume_memory_register_write(int address, int size, memory_cb_fnc cb);
 EXPORTED void desmume_memory_register_read(int address, int size, memory_cb_fnc cb);
 EXPORTED void desmume_memory_register_exec(int address, int size, memory_cb_fnc cb);

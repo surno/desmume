@@ -32,6 +32,7 @@
 #include "../../mc.h"
 #include "../../firmware.h"
 #include "../../armcpu.h"
+#include "../../arm_jit.h"
 #ifdef ENABLE_APPLE_METAL
 #include "../../MetalRender.h"
 #endif
@@ -559,6 +560,56 @@ EXPORTED void desmume_memory_set_next_instruction(u32 value)
     if (!CommonSettings.use_jit) {
         NDS_ARM9.next_instruction = value;
     }
+}
+
+// CPU Emulation Engine (JIT) Configuration
+EXPORTED BOOL desmume_get_jit_enabled(void)
+{
+#ifdef HAVE_JIT
+    return CommonSettings.use_jit;
+#else
+    return false;
+#endif
+}
+
+EXPORTED void desmume_set_jit_enabled(BOOL enabled)
+{
+#ifdef HAVE_JIT
+    CommonSettings.use_jit = (enabled != 0);
+    arm_jit_reset(CommonSettings.use_jit, true);  // suppress_msg = true for headless
+#else
+    // JIT not available on this platform, silently ignore
+#endif
+}
+
+EXPORTED u32 desmume_get_jit_max_block_size(void)
+{
+#ifdef HAVE_JIT
+    return CommonSettings.jit_max_block_size;
+#else
+    return 0;
+#endif
+}
+
+EXPORTED void desmume_set_jit_max_block_size(u32 size)
+{
+#ifdef HAVE_JIT
+    // Validate range: 1-100 (matching Windows frontend validation)
+    if (size < 1) {
+        CommonSettings.jit_max_block_size = 1;
+    } else if (size > 100) {
+        CommonSettings.jit_max_block_size = 100;
+    } else {
+        CommonSettings.jit_max_block_size = size;
+    }
+    
+    // If JIT is currently enabled, reset it to apply new block size
+    if (CommonSettings.use_jit) {
+        arm_jit_reset(CommonSettings.use_jit, true);
+    }
+#else
+    // JIT not available on this platform, silently ignore
+#endif
 }
 
 INLINE void memory_register_hook(int addr, MemHookType hook_type, int size, memory_cb_fnc cb)
