@@ -929,6 +929,10 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
   
   // Maximum indices that can fit in the allocated buffer
   const size_t maxIndexCount = indexBufferSize / sizeof(u16);
+  
+  // Track how many polygons successfully made it into the index buffer
+  size_t indexedPolyCount = 0;
+  size_t indexedPolyOpaqueCount = 0;
 
   for (size_t i = 0; i < _clippedPolyCount; i++) {
     const CPoly &cPoly = _clippedPolyList[i];
@@ -944,7 +948,8 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
       // Bounds check: ensure 6 indices can fit
       if (indexCount + 6 > maxIndexCount) {
         NSLog(@"MetalRender ERROR: Index buffer overflow prevented (quad). "
-              @"indexCount=%zu, maxIndexCount=%zu", indexCount, maxIndexCount);
+              @"indexCount=%zu, maxIndexCount=%zu, indexed %zu/%zu polygons", 
+              indexCount, maxIndexCount, indexedPolyCount, _clippedPolyCount);
         break;
       }
       indexPtr[indexCount++] = vertexOffset + 0;
@@ -963,8 +968,8 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
         // Bounds check: ensure all indices for this polygon can fit
         if (indexCount + indicesNeeded > maxIndexCount) {
           NSLog(@"MetalRender ERROR: Index buffer overflow prevented (fan). "
-                @"indexCount=%zu, indicesNeeded=%zu, maxIndexCount=%zu", 
-                indexCount, indicesNeeded, maxIndexCount);
+                @"indexCount=%zu, indicesNeeded=%zu, maxIndexCount=%zu, indexed %zu/%zu polygons", 
+                indexCount, indicesNeeded, maxIndexCount, indexedPolyCount, _clippedPolyCount);
           break;
         }
         
@@ -981,7 +986,19 @@ Render3DError MetalRender::BeginRender(const GFX3D_State &renderState,
     // Store texture
     _textureList[i] =
         this->GetLoadedTextureFromPolygon(rawPoly, _enableTextureSampling);
+    
+    // Track indexed polygon counts
+    indexedPolyCount++;
+    if (i < _clippedPolyOpaqueCount) {
+      indexedPolyOpaqueCount++;
+    }
   }
+  
+  // Store the actual counts of polygons that made it into the index buffer
+  // If the loop completed normally, these equal _clippedPolyCount/_clippedPolyOpaqueCount
+  // If overflow occurred and we broke early, these reflect what was actually indexed
+  _actualIndexedPolyCount = indexedPolyCount;
+  _actualIndexedPolyOpaqueCount = indexedPolyOpaqueCount;
 
   // Create the command buffer for this frame
   _commandBuffer = [_commandQueue commandBuffer];
@@ -1182,7 +1199,8 @@ Render3DError MetalRender::RenderGeometry() {
   };
 
   // Exit if there are no polygons to render
-  if (_clippedPolyCount == 0) {
+  // Use _actualIndexedPolyCount which reflects what actually made it into the index buffer
+  if (_actualIndexedPolyCount == 0) {
     return RENDER3DERROR_NOERR;
   }
 
@@ -1215,15 +1233,16 @@ Render3DError MetalRender::RenderGeometry() {
   [_renderCommandEncoder setVertexBuffer:_vertexBuffer[_vertexBufferIndex] offset:0 atIndex:0];
 
   // The emulator separates polygons into two groups:
-  // 1. Opaque polygons (0 to _clippedPolyOpaqueCount-1)
-  // 2. Translucent polygons (_clippedPolyOpaqueCount to
-  // _clippedPolyCount-1)
+  // 1. Opaque polygons (0 to _actualIndexedPolyOpaqueCount-1)
+  // 2. Translucent polygons (_actualIndexedPolyOpaqueCount to _actualIndexedPolyCount-1)
+  // NOTE: We use _actualIndexedPolyCount which may be less than _clippedPolyCount
+  // if index buffer overflow protection triggered during BeginRender
 
   size_t indexOffset = 0; // Track where we are in the index buffer
 
   // draw the opaque polygons first
-  if (_clippedPolyOpaqueCount > 0) {
-    for (size_t i = 0; i < _clippedPolyOpaqueCount; i++) {
+  if (_actualIndexedPolyOpaqueCount > 0) {
+    for (size_t i = 0; i < _actualIndexedPolyOpaqueCount; i++) {
       const CPoly &cPoly = _clippedPolyList[i];
       const POLY &rawPoly = _rawPolyList[cPoly.index];
 
@@ -1323,11 +1342,13 @@ Render3DError MetalRender::RenderGeometry() {
                                       atIndex:0];
 
       // draw the polygon
-      [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                        indexCount:indexCount
-                                         indexType:MTLIndexTypeUInt16
-                                       indexBuffer:_indexBuffer
-                                 indexBufferOffset:indexOffset * sizeof(u16)];
+      if (indexCount > 0) {
+        [_renderCommandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                          indexCount:indexCount
+                                           indexType:MTLIndexTypeUInt16
+                                         indexBuffer:_indexBuffer
+                                   indexBufferOffset:indexOffset * sizeof(u16)];
+      }
 
       // increment the index offset
       indexOffset += indexCount;
@@ -1335,9 +1356,10 @@ Render3DError MetalRender::RenderGeometry() {
   }
 
   // draw the translucent polygons
-  if (_clippedPolyOpaqueCount < _clippedPolyCount) {
+  // Only render translucent polygons that were actually indexed
+  if (_actualIndexedPolyOpaqueCount < _actualIndexedPolyCount) {
     
-    for (size_t i = _clippedPolyOpaqueCount; i < _clippedPolyCount; i++) {
+    for (size_t i = _actualIndexedPolyOpaqueCount; i < _actualIndexedPolyCount; i++) {
       const CPoly &cPoly = _clippedPolyList[i];
       const POLY &rawPoly = _rawPolyList[cPoly.index];
 
@@ -1694,7 +1716,8 @@ Render3DError MetalRender::InitializeSamplerState() {
 
 Render3DError MetalRender::PostprocessFramebuffer() {
   // Early return if postprocessing is not needed
-  if (_clippedPolyCount == 0 || (!_enableEdgeMark && !_enableFog)) {
+  // Use _actualIndexedPolyCount to match what was actually rendered
+  if (_actualIndexedPolyCount == 0 || (!_enableEdgeMark && !_enableFog)) {
     return RENDER3DERROR_NOERR;
   }
 

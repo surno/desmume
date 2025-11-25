@@ -216,6 +216,12 @@ private:
   size_t _vertexBufferIndex;                         // Index of current vertex buffer
   MTLBufferPtr _indexBuffer;                        // Index buffer
   const GFX3D_GeometryList *_renderGList;           // Reference to current geometry list (for debugging)
+  
+  // Track actual polygon counts that made it into the index buffer
+  // These may be less than _clippedPolyCount/_clippedPolyOpaqueCount if overflow occurs
+  size_t _actualIndexedPolyCount;        // Total polygons successfully indexed
+  size_t _actualIndexedPolyOpaqueCount;  // Opaque polygons successfully indexed
+  
   MTLTexturePtr _colorTexture;                      // Render target
   MTLTexturePtr _depthTexture;                      // Depth buffer
   MTLRenderPassDescriptorPtr _renderPassDescriptor; // Render pass descriptor
