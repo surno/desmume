@@ -38,3 +38,8 @@ option('sdl',
   value: true,
   description: 'Enable SDL2 support for window rendering and input',
 )
+option('metal',
+  type: 'boolean',
+  value: false,
+  description: 'Enable Metal renderer (macOS only)',
+)

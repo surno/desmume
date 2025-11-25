@@ -1,5 +1,5 @@
 project('desmume',
-  ['c', 'cpp'],
+  ['c', 'cpp', 'objcpp'],
   version: '2.7.10',
   meson_version: '>=0.45',
   default_options: [
@@ -215,6 +215,35 @@ elif get_option('opengl')
     ]
   else
     message('Cannot build with OpenGL -- library not found.')
+  endif
+endif
+
+# Add Metal support for macOS
+if get_option('metal')
+  if host_machine.system() == 'darwin'
+    # Add Metal and Foundation frameworks
+    dep_metal = dependency('appleframeworks', modules: ['Metal', 'Foundation'])
+    dependencies += dep_metal
+    add_global_arguments('-DENABLE_APPLE_METAL', language: ['c', 'cpp', 'objcpp'])
+    
+    # Compile Metal shaders into a library
+    metal_shader = custom_target('metal_shaders',
+      input: '../../MetalShaders.metal',
+      output: 'default.metallib',
+      command: ['xcrun', '-sdk', 'macosx', 'metal', '-c', '@INPUT@', '-o', 'MetalShaders.air', '&&',
+                'xcrun', '-sdk', 'macosx', 'metallib', 'MetalShaders.air', '-o', '@OUTPUT@'],
+      install: false,
+    )
+    
+    # Add Metal renderer source and bootstrap
+    libdesmume_src += [
+      '../../MetalRender.mm',
+      'metal_bootstrap.mm',
+    ]
+    
+    message('Metal renderer enabled')
+  else
+    error('Metal renderer is only available on macOS')
   endif
 endif
 

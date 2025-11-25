@@ -21,9 +21,8 @@
 #ifndef _TEXCACHE_H_
 #define _TEXCACHE_H_
 
-#include <map>
+#include <atomic>
 #include <unordered_map>
-#include <vector>
 
 #include "common.h"
 #include "gfx3d.h"
@@ -57,18 +56,24 @@ typedef std::unordered_map<TextureCacheKey, TextureStore *>
     TextureCacheMap; // Key = A TextureCacheKey that includes a combination of
                      // the texture's NDS texture attributes and palette
                      // attributes; Value = Pointer to the texture item
-typedef std::vector<TextureStore *> TextureCacheList;
 // typedef u32 TextureFingerprint;
 
 class TextureCache {
+private:
+  void AddUnlocked(TextureStore *texItem);
+  void RemoveUnlocked(TextureStore *texItem);
+
+  void MoveToFrontUnlocked(TextureStore *texItem); // Mark as most recently used
+
 protected:
   TextureCacheMap _texCacheMap; // Used to quickly find a texture item by using
                                 // a key of type TextureCacheKey
-  TextureCacheList _texCacheList; // Used to sort existing texture items for
-                                  // various operations
   size_t _actualCacheSize;
   size_t _cacheSizeThreshold;
   u8 _paletteDump[PALETTE_DUMP_SIZE];
+
+  TextureStore *_lruHead; // Most recently used texture
+  TextureStore *_lruTail; // Least recently used texture
 
 public:
   TextureCache();
@@ -86,6 +91,10 @@ public:
 
   void Add(TextureStore *texItem);
   void Remove(TextureStore *texItem);
+
+  void MoveToFront(TextureStore *texItem); // Mark as most recently used
+
+  void UpdateLRUFromFlags();
 
   static TextureCacheKey GenerateKey(const TEXIMAGE_PARAM texAttributes,
                                      const u32 palAttributes);
@@ -124,14 +133,18 @@ protected:
 
   TextureCacheKey _cacheKey;
   size_t _cacheSize;
-  size_t _cacheAge; // A value of 0 means the texture was just used. The higher
-                    // this value, the older the texture.
-  size_t _cacheUsageCount;
 
 public:
   TextureStore();
   TextureStore(const TEXIMAGE_PARAM texAttributes, const u32 palAttributes);
   virtual ~TextureStore();
+
+  // LRU list
+  TextureStore *_lruPrev;
+  TextureStore *_lruNext;
+
+  std::atomic<bool> _usedThisFrame;
+  void MarkUsedThisFrame();
 
   TEXIMAGE_PARAM GetTextureAttributes() const;
   u32 GetPaletteAttributes() const;
@@ -178,14 +191,6 @@ public:
 
   size_t GetCacheSize() const;
   void SetCacheSize(size_t cacheSize);
-
-  size_t GetCacheAge() const;
-  void IncreaseCacheAge(const size_t ageAmount);
-  void ResetCacheAge();
-
-  size_t GetCacheUseCount() const;
-  void IncreaseCacheUsageCount(const size_t usageCount);
-  void ResetCacheUsageCount();
 
   void Update();
   void VRAMCompareAndUpdate();
