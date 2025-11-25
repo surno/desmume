@@ -156,9 +156,9 @@ EXPORTED u16 desmume_input_joy_number_connected(void);
 EXPORTED u16 desmume_input_joy_get_key(int index);
 EXPORTED u16 desmume_input_joy_get_set_key(int index);
 EXPORTED void desmume_input_joy_set_key(int index, int joystick_key_index);
-#endif
 EXPORTED void desmume_input_keypad_update(u16 keys);
 EXPORTED u16 desmume_input_keypad_get(void);
+#endif
 
 EXPORTED void desmume_input_set_touch_pos(u16 x, u16 y);
 EXPORTED void desmume_input_release_touch();
