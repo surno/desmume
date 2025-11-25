@@ -297,7 +297,8 @@ fragment float4 fogFragment(
     
     // Look up fog density from the 32-entry table
     // Density is normalized [0, 1] where 1 = full fog
-    float fogDensity = fogDensityTable.read(fogIndex).r;
+    // Cast to uint explicitly to resolve ambiguity
+    float fogDensity = fogDensityTable.read(uint(fogIndex)).r;
     
     // Return fog weight as RGBA
     // This will be blended with the scene using special blend modes

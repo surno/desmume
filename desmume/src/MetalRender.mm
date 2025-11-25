@@ -161,8 +161,6 @@ Render3DError MetalRender::InitResources() {
     return RENDER3DERROR_NOERR + 1;
   }
   [_commandQueue retain];
-  
-  printf("Metal 3D: Using shared device: %s\n", [[_device name] UTF8String]);
 
   Render3DError error;
   
@@ -518,9 +516,20 @@ Render3DError MetalRender::InitializePipelineState() {
     
     if (SharedMetalData != nil)
     {
-        // Use the shared library from the display system (borrowed reference)
-        defaultLibrary = [SharedMetalData defaultLibrary];
-        shouldReleaseLibrary = false;
+        // Verify the object responds to the defaultLibrary selector before accessing it
+        SEL defaultLibrarySelector = @selector(defaultLibrary);
+        if ([SharedMetalData respondsToSelector:defaultLibrarySelector])
+        {
+            // Use the shared library from the display system (borrowed reference)
+            defaultLibrary = [SharedMetalData defaultLibrary];
+            shouldReleaseLibrary = false;
+        }
+        else
+        {
+            // Fallback: SharedMetalData doesn't have defaultLibrary property
+            defaultLibrary = [_device newDefaultLibrary];
+            shouldReleaseLibrary = true;
+        }
     }
     else
     {
@@ -538,7 +547,6 @@ Render3DError MetalRender::InitializePipelineState() {
     id<MTLFunction> vertexFunction =
         [defaultLibrary newFunctionWithName:@"vertexShader"];
     if (vertexFunction == nil) {
-      printf("Metal 3D: ERROR - vertexShader not found in library!\n");
       if (shouldReleaseLibrary) {
         [defaultLibrary release];
       }
@@ -549,7 +557,6 @@ Render3DError MetalRender::InitializePipelineState() {
     id<MTLFunction> fragmentFunction =
         [defaultLibrary newFunctionWithName:@"fragmentShaderTextured"];
     if (fragmentFunction == nil) {
-      printf("Metal 3D: ERROR - fragmentShaderTextured not found in library!\n");
       [vertexFunction release];
       if (shouldReleaseLibrary) {
         [defaultLibrary release];
@@ -2057,10 +2064,38 @@ Render3DError MetalRender::SetupViewport(const GFX3D_Viewport viewport) {
 
 Render3DError MetalRender::InitializePostprocessPipelines() {
   @autoreleasepool {
-    // Load the default Metal library, as this will automatically load the
-    // shaders. (+1 retain count, must release)
-    id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
+    // Track if we own the library (need to release it)
+    bool shouldReleaseLibrary = false;
+    
+    // IMPORTANT: Load from shared library instead of creating new one
+    id<MTLLibrary> defaultLibrary = nil;
+    
+    if (SharedMetalData != nil)
+    {
+        // Verify the object responds to the defaultLibrary selector before accessing it
+        SEL defaultLibrarySelector = @selector(defaultLibrary);
+        if ([SharedMetalData respondsToSelector:defaultLibrarySelector])
+        {
+            // Use the shared library from the display system (borrowed reference)
+            defaultLibrary = [SharedMetalData defaultLibrary];
+            shouldReleaseLibrary = false;
+        }
+        else
+        {
+            // Fallback: SharedMetalData doesn't have defaultLibrary property
+            defaultLibrary = [_device newDefaultLibrary];
+            shouldReleaseLibrary = true;
+        }
+    }
+    else
+    {
+        // Fallback: load our own library (owned reference, +1 retain count)
+        defaultLibrary = [_device newDefaultLibrary];
+        shouldReleaseLibrary = true;
+    }
+
     if (defaultLibrary == nil) {
+      printf("Metal: Failed to load Metal library for postprocessing\n");
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2068,7 +2103,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
     id<MTLFunction> vertexFunction =
         [defaultLibrary newFunctionWithName:@"postprocessVertex"];
     if (vertexFunction == nil) {
-      [defaultLibrary release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2077,7 +2114,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
         [defaultLibrary newFunctionWithName:@"fogFragment"];
     if (fragmentFunction == nil) {
       [vertexFunction release];
-      [defaultLibrary release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2087,7 +2126,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
     if (edgeMarkFragmentFunction == nil) {
       [fragmentFunction release];
       [vertexFunction release];
-      [defaultLibrary release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2139,7 +2180,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
       [edgeMarkFragmentFunction release];
       [fragmentFunction release];
       [vertexFunction release];
-      [defaultLibrary release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2175,7 +2218,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
       [edgeMarkFragmentFunction release];
       [fragmentFunction release];
       [vertexFunction release];
-      [defaultLibrary release];
+      if (shouldReleaseLibrary) {
+        [defaultLibrary release];
+      }
       return RENDER3DERROR_INVALID_BINDING;
     }
 
@@ -2183,7 +2228,9 @@ Render3DError MetalRender::InitializePostprocessPipelines() {
     [edgeMarkFragmentFunction release];
     [fragmentFunction release];
     [vertexFunction release];
-    [defaultLibrary release];
+    if (shouldReleaseLibrary) {
+      [defaultLibrary release];
+    }
 
     return RENDER3DERROR_NOERR;
   } // @autoreleasepool

@@ -233,6 +233,7 @@ if get_option('metal')
       command: ['xcrun', '-sdk', 'macosx', 'metal', '-c', '@INPUT@', '-o', 'MetalShaders.air', '&&',
                 'xcrun', '-sdk', 'macosx', 'metallib', 'MetalShaders.air', '-o', '@OUTPUT@'],
       install: false,
+      build_by_default: true,  # Ensure it's built even if not a dependency
     )
     
     # Add Metal renderer source and bootstrap

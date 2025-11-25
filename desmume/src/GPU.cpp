@@ -5287,7 +5287,20 @@ bool GPUSubsystem::Change3DRendererByID(int rendererID)
 	// lazily changed via the flag set by Set3DRendererByID().
 	this->_needChange3DRenderer = false;
 	
-	Render3DInterface *newRenderInterface = core3DList[rendererID];
+	// Map RENDERID constants to actual array indices
+	// core3DList structure: [0]=NULL, [1]=SOFTRASTERIZER, [2]=METAL, [3]=NULL
+	int arrayIndex = rendererID;
+	if (rendererID == RENDERID_METAL) {
+		// Metal is at index 2 in core3DList
+		arrayIndex = 2;
+	} else if (rendererID == RENDERID_SOFTRASTERIZER) {
+		arrayIndex = 1;
+	} else if (rendererID == RENDERID_NULL) {
+		arrayIndex = 0;
+	}
+	// Note: OpenGL renderers (1000+) are not in this core3DList, they would need separate handling
+	
+	Render3DInterface *newRenderInterface = core3DList[arrayIndex];
 	if ( (newRenderInterface == NULL) || (newRenderInterface->NDS_3D_Init == NULL) )
 	{
 		return result;
