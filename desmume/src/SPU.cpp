@@ -303,6 +303,11 @@ void SPU_SetVolume(int newVolume)
 		_currentSNDCore->SetVolume(newVolume);
 }
 
+int SPU_GetVolume(void)
+{
+	return _currentVolume;
+}
+
 
 void SPU_Reset(void)
 {

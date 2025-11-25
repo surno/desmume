@@ -232,6 +232,7 @@ void SPU_ReInit(bool fakeBoot = false);
 int SPU_Init(int coreid, int newBufferSizeBytes);
 void SPU_Pause(int pause);
 void SPU_SetVolume(int newVolume);
+int SPU_GetVolume(void);
 void SPU_SetSynchMode(int mode, int method);
 void SPU_ClearOutputBuffer(void);
 void SPU_Reset(void);
