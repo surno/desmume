@@ -128,13 +128,13 @@ MetalRender::MetalRender()
       _depthStencilStateTranslucent(nil),
       _depthStencilStateTranslucentDepthWrite(nil),
       _depthStencilStateShadowPass1(nil), _depthStencilStateShadowPass2(nil),
-      _vertexBuffer{nil, nil}, _vertexBufferIndex(0), _indexBuffer(nil), _colorTexture(nil),
-      _depthTexture(nil), _renderPassDescriptor(nil),
-      _enableAlphaBlending(false), _enableAntialiasing(false),
-      _metalColorOut(nullptr), _samplerStateClampNearest(nil),
-      _samplerStateClampLinear(nil), _samplerStateRepeatNearest(nil),
-      _samplerStateRepeatLinear(nil), _samplerStateMirrorNearest(nil),
-      _samplerStateMirrorLinear(nil), _renderGList(nullptr) {
+      _vertexBuffer{nil, nil}, _vertexBufferIndex(0), _indexBuffer(nil), _renderGList(nullptr),
+      _colorTexture(nil), _depthTexture(nil),
+      _renderPassDescriptor(nil), _enableAlphaBlending(false),
+      _enableAntialiasing(false), _metalColorOut(nullptr),
+      _samplerStateClampNearest(nil), _samplerStateClampLinear(nil),
+      _samplerStateRepeatNearest(nil), _samplerStateRepeatLinear(nil),
+      _samplerStateMirrorNearest(nil), _samplerStateMirrorLinear(nil) {
   // Constructor only initializes members to safe defaults.
   // Actual initialization is done in InitResources() - this follows the
   // two-phase initialization pattern used by OpenGL renderers in this codebase.
