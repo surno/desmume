@@ -2701,8 +2701,8 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 			                                                                                               srcEffectEnableMask,
 			                                                                                               dstBlendEnableMaskLUT,
 			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+			                                                                                               this->_sprAlpha + i,
+			                                                                                               this->_sprType + i);
 		}
 		else
 		{
@@ -2719,8 +2719,8 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 			                                                                                               srcEffectEnableMask,
 			                                                                                               dstBlendEnableMaskLUT,
 			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+			                                                                                               this->_sprAlpha + i,
+			                                                                                               this->_sprType + i);
 		}
 	}
 }

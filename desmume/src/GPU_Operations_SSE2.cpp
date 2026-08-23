@@ -2736,8 +2736,8 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 			                                                                                               srcEffectEnableMask,
 			                                                                                               dstBlendEnableMaskLUT,
 			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+			                                                                                               this->_sprAlpha + i,
+			                                                                                               this->_sprType + i);
 		}
 		else
 		{
@@ -2745,7 +2745,7 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 				_mm_load_si128((v128u16 *)srcColorNative16 + 0),
 				_mm_load_si128((v128u16 *)srcColorNative16 + 1)
 			};
-			
+
 			pixelop_vec.Composite16<COMPOSITORMODE, OUTPUTFORMAT, GPULayerType_OBJ, WILLPERFORMWINDOWTEST>(compInfo,
 			                                                                                               didAllPixelsPass,
 			                                                                                               passMask8, evy16,
@@ -2754,8 +2754,8 @@ void GPUEngineBase::_CompositeNativeLineOBJ_LoopOp(GPUEngineCompositorInfo &comp
 			                                                                                               srcEffectEnableMask,
 			                                                                                               dstBlendEnableMaskLUT,
 			                                                                                               this->_enableColorEffectNative[GPULayerID_OBJ] + i,
-			                                                                                               this->_sprAlpha[compInfo.line.indexNative] + i,
-			                                                                                               this->_sprType[compInfo.line.indexNative] + i);
+			                                                                                               this->_sprAlpha + i,
+			                                                                                               this->_sprType + i);
 		}
 	}
 }
