@@ -5267,28 +5267,15 @@ int GPUSubsystem::Get3DRendererID()
 	return this->_pending3DRendererID;
 }
 
-void GPUSubsystem::Set3DRendererByID(int rendererID)
+// Some ports (Windows, Cocoa, GTK, CLI) build core3DList using small, dense
+// positional indices, while others (the "interface" frontend) call this API
+// using the sparse RENDERID_* constants from render3D.h (e.g. RENDERID_METAL
+// = 2000). Map the well-known RENDERID_* constants to their actual position
+// in core3DList; any other value (including the small positional indices
+// used directly by the other ports) passes through unchanged.
+// core3DList structure (interface frontend): [0]=NULL, [1]=SOFTRASTERIZER, [2]=METAL, [3]=NULL
+Render3DInterface* GPUSubsystem::_GetRender3DInterfaceByID(int rendererID)
 {
-	Render3DInterface *newRenderInterface = core3DList[rendererID];
-	if ( (newRenderInterface == NULL) || (newRenderInterface->NDS_3D_Init == NULL) )
-	{
-		return;
-	}
-	
-	this->_pending3DRendererID = rendererID;
-	this->_needChange3DRenderer = true;
-}
-
-bool GPUSubsystem::Change3DRendererByID(int rendererID)
-{
-	bool result = false;
-	
-	// Whether pass or fail, the 3D renderer will have only one chance to be
-	// lazily changed via the flag set by Set3DRendererByID().
-	this->_needChange3DRenderer = false;
-	
-	// Map RENDERID constants to actual array indices
-	// core3DList structure: [0]=NULL, [1]=SOFTRASTERIZER, [2]=METAL, [3]=NULL
 	int arrayIndex = rendererID;
 	if (rendererID == RENDERID_METAL) {
 		// Metal is at index 2 in core3DList
@@ -5299,8 +5286,36 @@ bool GPUSubsystem::Change3DRendererByID(int rendererID)
 		arrayIndex = 0;
 	}
 	// Note: OpenGL renderers (1000+) are not in this core3DList, they would need separate handling
-	
-	Render3DInterface *newRenderInterface = core3DList[arrayIndex];
+
+	if (arrayIndex < 0)
+	{
+		return NULL;
+	}
+
+	return core3DList[arrayIndex];
+}
+
+void GPUSubsystem::Set3DRendererByID(int rendererID)
+{
+	Render3DInterface *newRenderInterface = this->_GetRender3DInterfaceByID(rendererID);
+	if ( (newRenderInterface == NULL) || (newRenderInterface->NDS_3D_Init == NULL) )
+	{
+		return;
+	}
+
+	this->_pending3DRendererID = rendererID;
+	this->_needChange3DRenderer = true;
+}
+
+bool GPUSubsystem::Change3DRendererByID(int rendererID)
+{
+	bool result = false;
+
+	// Whether pass or fail, the 3D renderer will have only one chance to be
+	// lazily changed via the flag set by Set3DRendererByID().
+	this->_needChange3DRenderer = false;
+
+	Render3DInterface *newRenderInterface = this->_GetRender3DInterfaceByID(rendererID);
 	if ( (newRenderInterface == NULL) || (newRenderInterface->NDS_3D_Init == NULL) )
 	{
 		return result;
