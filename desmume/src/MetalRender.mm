@@ -2751,17 +2751,17 @@ void MetalRendererDestroy()
     {
         return;
     }
-    
+
     Render3DBaseDestroy();
-    
-    // Release shared resources reference
-    @autoreleasepool {
-        if (SharedMetalData != nil)
-        {
-            [(id)SharedMetalData release];
-            SharedMetalData = nil;
-        }
-    }
+
+    // Note: SharedMetalData is a process-wide singleton owned by the Metal
+    // bootstrap/display code (see metal_setSharedResources()), not by this
+    // renderer instance. It must NOT be released/nil'd here, since this
+    // function runs on every renderer switch away from Metal (not just at
+    // process exit) via GPU3DInterface::NDS_3D_Close(). Clearing it here
+    // would permanently disable Metal for the rest of the process, since
+    // desmume_metal_bootstrap_init() only calls metal_setSharedResources()
+    // once and never re-initializes it.
 }
 
 // GPU3DInterface definition for Metal renderer
