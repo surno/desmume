@@ -1874,7 +1874,9 @@ private:
 	
 	void _DownscaleAndConvertForSavestate(const NDSDisplayID displayID, const void *srcBuffer, u16 *dstBuffer);
 	void _ConvertAndUpscaleForLoadstate(const NDSDisplayID displayID, const u16 *srcBuffer, void *dstBuffer);
-	
+
+	Render3DInterface* _GetRender3DInterfaceByID(int rendererID);
+
 public:
 	GPUSubsystem();
 	~GPUSubsystem();
