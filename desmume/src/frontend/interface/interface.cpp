@@ -625,6 +625,7 @@ EXPORTED void desmume_memory_write_register(char* register_name, u32 value)
 					}
 				}
 			}
+			return;
 		}
 	}
 }
