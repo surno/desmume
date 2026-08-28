@@ -676,9 +676,11 @@ const char* _CDECL_ FCEUI_LoadMovie(const char *fname, bool _read_only, bool tas
 	//--------------
 
 	currMovieData = MovieData();
-	
+
+	if (strlen(fname) >= sizeof(curMovieFilename))
+		return "movie file path is too long";
 	strcpy(curMovieFilename, fname);
-	
+
 	bool loadedfm2 = false;
 	EMUFILE *fp = new EMUFILE_FILE(fname, "rb");
 	loadedfm2 = LoadFM2(currMovieData, *fp, INT_MAX, false);
@@ -751,7 +753,8 @@ static void openRecordingMovie(const char* fname)
 	osRecordingMovie = new EMUFILE_FILE(fname, "wb");
 	/*if(!osRecordingMovie)
 		FCEU_PrintError("Error opening movie output file: %s",fname);*/
-	strcpy(curMovieFilename, fname);
+	strncpy(curMovieFilename, fname, sizeof(curMovieFilename) - 1);
+	curMovieFilename[sizeof(curMovieFilename) - 1] = '\0';
 }
 
 bool MovieData::loadSramFrom(std::vector<u8>* buf)
