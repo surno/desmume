@@ -597,8 +597,13 @@ static bool mmu_loadstate(EMUFILE &is, int size)
 	//version 8:
 	memset(MMU.fw.data._raw, 0, sizeof(NDSFirmwareData));
 	MMU.fw.size = is.read_u32LE();
+	if (MMU.fw.size > sizeof(MMU.fw.data._raw))
+	{
+		//corrupt or malicious savestate: firmware size exceeds the fixed-size buffer
+		return false;
+	}
 	is.fread(MMU.fw.data._raw, MMU.fw.size);
-	
+
 	return ok;
 }
 
