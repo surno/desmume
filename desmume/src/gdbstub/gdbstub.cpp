@@ -801,7 +801,16 @@ processPacket_gdb( SOCKET_TYPE sock, const uint8_t *packet,
       if ( *rx_ptr++ == ',') {
         if ( hexToInt( &rx_ptr, &length)) {
           //DEBUG_LOG("mem read from %08x (%d)\n", addr, length);
-          if ( !mem2hex( stub->direct_memio, addr, out_ptr, length)) {
+          /* out_ptr points into the fixed-size hidden_buffer; mem2hex writes
+           * 2*length hex digits plus a NUL terminator, so a client-supplied
+           * length must be clamped to what actually fits in that buffer. */
+          uint32_t remaining = (uint32_t)(&hidden_buffer[BUFMAX] - out_ptr);
+          uint32_t maxLength = (remaining > 1) ? (remaining - 1) / 2 : 0;
+          if ( length > maxLength) {
+            strcpy ( (char *)out_ptr, "E03");
+            send_size = 3;
+          }
+          else if ( !mem2hex( stub->direct_memio, addr, out_ptr, (int)length)) {
             strcpy ( (char *)out_ptr, "E03");
             send_size = 3;
           }
