@@ -272,9 +272,9 @@ bool CFIRMWARE::load(const char *firmwareFilePath)
 
 	if (MMU.fw.size != fileSize)	// reallocate
 		mc_alloc(&MMU.fw, (u32)fileSize);
-	
+
 	this->_userDataAddr = LE_TO_LOCAL_16(newFirmwareData->header.userSettingsOffset) * 8;
-	
+
 	// fix bad dump of firmware? (wrong DS type)
 	// fix mario kart touch screen calibration
 	if ( (newFirmwareData->header.key.unused != 0xFFFF) && (newFirmwareData->header.key.consoleType == NDS_CONSOLE_TYPE_IQUE_LITE) )
@@ -282,8 +282,20 @@ bool CFIRMWARE::load(const char *firmwareFilePath)
 		newFirmwareData->header.key.consoleType = NDS_CONSOLE_TYPE_FAT;
 		newFirmwareData->header.key.unused = 0xFFFF;
 	}
-	
-	memcpy(&MMU.fw.data, newFirmwareData, fileSize);
+
+	// newFirmwareData and MMU.fw.data are both fixed-size NDSFirmwareData objects
+	// (sizeof(NDSFirmwareData) == NDS_FW_SIZE_V1), but fileSize is the size of the
+	// firmware file on disk, which NDS_ReadFirmwareDataFromFile() also accepts as
+	// NDS_FW_SIZE_V2 (512Kbit firmware). Clamp the copy so it never reads past the
+	// end of newFirmwareData or writes past the end of MMU.fw.data; MMU.fw.size
+	// keeps the real fileSize so the 512Kbit case is still detected and rejected
+	// later in CFIRMWARE::unpack().
+	size_t copySize = fileSize;
+	if (copySize > sizeof(NDSFirmwareData))
+	{
+		copySize = sizeof(NDSFirmwareData);
+	}
+	memcpy(&MMU.fw.data, newFirmwareData, copySize);
 	delete newFirmwareData;
 	
 	this->_isLoaded = true;
