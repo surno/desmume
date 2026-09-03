@@ -3968,6 +3968,14 @@ bool gfx3d_loadstate(EMUFILE &is, int size)
 		float loadingSortYMax = 0.0f;
 		
 		is.read_32LE(vertListCount32);
+		// vertListCount32 comes straight from the savestate file and is used below
+		// as the write bound into the fixed-size rawVtxList[VERTLIST_SIZE] arrays.
+		// A corrupt or malicious savestate could otherwise drive an out-of-bounds
+		// write here, so reject anything that doesn't fit.
+		if (vertListCount32 > VERTLIST_SIZE)
+		{
+			return false;
+		}
 		gfx3d.gList[gfx3d.pendingListIndex].rawVertCount = vertListCount32;
 		gfx3d.gList[gfx3d.appliedListIndex].rawVertCount = vertListCount32;
 		for (size_t i = 0; i < gfx3d.gList[gfx3d.appliedListIndex].rawVertCount; i++)
@@ -3975,8 +3983,14 @@ bool gfx3d_loadstate(EMUFILE &is, int size)
 			GFX3D_LoadStateVertex(gfx3d.gList[gfx3d.pendingListIndex].rawVtxList[i], is);
 			gfx3d.gList[gfx3d.appliedListIndex].rawVtxList[i] = gfx3d.gList[gfx3d.pendingListIndex].rawVtxList[i];
 		}
-		
+
 		is.read_32LE(polyListCount32);
+		// Same overflow risk as vertListCount32 above, but for the
+		// POLYLIST_SIZE-capped rawPolyList/rawPolyViewport/rawPolySortY* arrays.
+		if (polyListCount32 > POLYLIST_SIZE)
+		{
+			return false;
+		}
 		gfx3d.gList[gfx3d.pendingListIndex].rawPolyCount = polyListCount32;
 		gfx3d.gList[gfx3d.appliedListIndex].rawPolyCount = polyListCount32;
 		for (size_t i = 0; i < gfx3d.gList[gfx3d.appliedListIndex].rawPolyCount; i++)
