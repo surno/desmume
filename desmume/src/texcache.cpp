@@ -366,16 +366,24 @@ void TextureCache::MoveToFront(TextureStore *texItem) {
     return;
   }
 
-  // Remove from current position
+  // Remove from current position, but only if this item is actually linked
+  // into the list already. A texture that was just constructed and passed
+  // to Add() has both LRU pointers null and isn't part of the list yet;
+  // since it isn't the head (checked above), any linked list member other
+  // than the head always has a non-null _lruPrev, so that's what
+  // distinguishes "already in the list" from "brand new". Without this
+  // check, a brand-new item's null _lruNext gets mistaken for "this is the
+  // tail", clobbering _lruTail with the item's (also null) _lruPrev and
+  // permanently breaking eviction as soon as a second texture is added.
   if (texItem->_lruPrev) {
     texItem->_lruPrev->_lruNext = texItem->_lruNext;
-  }
 
-  if (texItem->_lruNext) {
-    texItem->_lruNext->_lruPrev = texItem->_lruPrev;
-  } else {
-    // this is the tail, update the cache tail
-    this->_lruTail = texItem->_lruPrev;
+    if (texItem->_lruNext) {
+      texItem->_lruNext->_lruPrev = texItem->_lruPrev;
+    } else {
+      // this is the tail, update the cache tail
+      this->_lruTail = texItem->_lruPrev;
+    }
   }
 
   // Insert at the front of the cache list
