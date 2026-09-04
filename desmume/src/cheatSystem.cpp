@@ -1108,6 +1108,12 @@ bool CHEATS::load()
 		}
 
 		tmp_cht.num = (u32)codeStr.length() / 16;
+		if (tmp_cht.num > MAX_XX_CODE)
+		{
+			INFO("Cheats: Too many codes at line %i\n", line);
+			continue;
+		}
+
 		if ((tmp_cht.type == CHEAT_TYPE_INTERNAL) && (tmp_cht.num > 1))
 		{
 			INFO("Cheats: Too many values for internal cheat\n", line);
