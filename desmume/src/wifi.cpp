@@ -791,6 +791,18 @@ static void WIFI_TXStart(const WifiTXLocIndex txSlotIndex, IOREG_W_TXBUF_LOCATIO
 		// Align packet length
 		txHeader.length = ((txHeader.length + 3) & 0xFFFC);
 
+		// txHeader.length is read directly out of wifi.RAM and is fully controlled by
+		// the emulated game/firmware (via the TX buffer MMIO registers), with only a
+		// lower bound checked above. Without an upper bound, the CRC32 read/write below
+		// (and the length-based copies done by callers such as CommSendPacket()) can run
+		// far past the end of the fixed 8KB wifi.RAM buffer.
+		if(txHeader.length > (0x2000 - byteAddress - sizeof(TXPacketHeader)))
+		{
+			WIFI_LOG(1, "TX slot %i trying to send a packet whose length (%u) overflows the TX buffer. Attempt ignored.\n",
+				(int)txSlotIndex, (unsigned int)txHeader.length);
+			return;
+		}
+
 		// Set sequence number if required
 		if((txSlotIndex == WifiTXLocIndex_BEACON) || (txLocation.IEEESeqCtrl == 0))
 		{
