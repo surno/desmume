@@ -2001,12 +2001,13 @@ bool spu_loadstate(EMUFILE &is, int size)
 		is.read_32LE(chan.num);
 		is.read_u8(chan.vol);
 		is.read_u8(chan.volumeDiv);
-		if (chan.volumeDiv == 4) chan.volumeDiv = 3;
+		if (chan.volumeDiv > 3) chan.volumeDiv = 3;
 		is.read_u8(chan.hold);
 		is.read_u8(chan.pan);
 		is.read_u8(chan.waveduty);
 		is.read_u8(chan.repeat);
 		is.read_u8(chan.format);
+		if (chan.format > 3) chan.format = 3;
 		is.read_u8(chan.status);
 		if (version >= 7) is.read_u8(chan.pcm16bOffs); else chan.pcm16bOffs = 0;
 		is.read_32LE(chan.addr);
