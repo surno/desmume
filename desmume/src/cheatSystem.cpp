@@ -1279,7 +1279,7 @@ bool CHEATS::XXCodeFromString(const char *codeString, CHEATS_LIST &outCheatItem)
 	
 	size_t code_len = strlen(codeString);
 	// remove wrong chars
-	for (size_t i = 0; i < code_len; i++)
+	for (size_t i = 0; i < code_len && t < tmpBufferSize - 1; i++)
 	{
 		char c = codeString[i];
 		//apparently 100% of pokemon codes were typed with the letter O in place of zero in some places
