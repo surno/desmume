@@ -1809,14 +1809,21 @@ void CheatDBGame::LoadPropertiesFromFile(FILE *fp, const bool isEncrypted, u8 (&
 {
 	const size_t gameDataBufferSize = (_workingDataSize < sizeof(workingBuffer)) ? _workingDataSize : sizeof(workingBuffer);
 	CheatDBFile::ReadToBuffer(fp, _baseOffset, isEncrypted, _encryptOffset, gameDataBufferSize, workingBuffer);
-	
+
 	const u8 *gameDataBuffer = workingBuffer + _encryptOffset;
 	const char *gameTitlePtrInBuffer = (const char *)gameDataBuffer;
-	_title = gameTitlePtrInBuffer;
-	
+	// gameDataBuffer is not guaranteed to be NUL-terminated within workingBuffer, so the
+	// title length must be bounded to the remaining valid buffer region to avoid reading
+	// past the end of the stack-allocated workingBuffer on a crafted/corrupted database.
+	const size_t maxTitleBytes = (gameDataBufferSize > _encryptOffset) ? (gameDataBufferSize - _encryptOffset) : 0;
+	const size_t titleLength = strnlen(gameTitlePtrInBuffer, maxTitleBytes);
+	_title = std::string(gameTitlePtrInBuffer, titleLength);
+
 	const u32 offsetMask = ~(u32)0x00000003;
-	const u32 entryCountOffset = (_baseOffset + (u32)strlen(gameTitlePtrInBuffer) + 4) & offsetMask;
-	_entryCount = *(u32 *)(gameDataBuffer + entryCountOffset - _baseOffset);
+	const u32 entryCountOffset = (_baseOffset + (u32)titleLength + 4) & offsetMask;
+	const u32 entryCountBufferOffset = entryCountOffset - _baseOffset;
+
+	_entryCount = ((size_t)entryCountBufferOffset + sizeof(u32) <= maxTitleBytes) ? *(u32 *)(gameDataBuffer + entryCountBufferOffset) : 0;
 	_firstEntryOffset = entryCountOffset + 36;
 }
 
