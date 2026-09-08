@@ -219,17 +219,33 @@ u32 ADVANsCEne::convertDB(const char *in_filename, EMUFILE &output)
 		else return 0;
 
 		el_serial = el->FirstChildElement("serial");
-		
+
 		if (!el_serial)
 		{
 			lastImportErrorMessage = "Missing <serial> element. Did you use the right xml file? We need the RtoolDS one.";
 			return 0;
 		}
-		output.fwrite(el_serial->GetText(), 8);
+		const char *serialText = el_serial->GetText();
+		if (!serialText)
+		{
+			lastImportErrorMessage = "Empty <serial> element. Did you use the right xml file? We need the RtoolDS one.";
+			return 0;
+		}
+		char serialBuf[8];
+		memset(serialBuf, 0, sizeof(serialBuf));
+		strncpy(serialBuf, serialText, sizeof(serialBuf));
+		output.fwrite(serialBuf, sizeof(serialBuf));
 
 		// CRC32
-		el_crc32 = el->FirstChildElement("files"); 
-		sscanf(el_crc32->FirstChildElement("romCRC")->GetText(), "%x", &db_crc32);
+		el_crc32 = el->FirstChildElement("files");
+		TiXmlElement *el_romCRC = el_crc32 ? el_crc32->FirstChildElement("romCRC") : NULL;
+		const char *crcText = el_romCRC ? el_romCRC->GetText() : NULL;
+		if (!crcText)
+		{
+			lastImportErrorMessage = "Missing <files><romCRC> element. Did you use the right xml file? We need the RtoolDS one.";
+			return 0;
+		}
+		sscanf(crcText, "%x", &db_crc32);
 		output.write_32LE(db_crc32);
 		
 		// Save type
