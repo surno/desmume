@@ -1255,6 +1255,12 @@ bool DSI_TSC::load_state(EMUFILE &is)
 	for (size_t i = 0; i < ARRAY_SIZE(registers); i++)
 		is.read_u8(registers[i]);
 
+	// reg_selection indexes the 0x80-byte registers[] array; write16() normally
+	// keeps it masked to 0x7F, but a crafted savestate can set the full u8 range
+	// (0-255), leading to an out-of-bounds write in write16() on the next TSC
+	// register write. Mask it here to match the invariant write16() maintains.
+	reg_selection &= 0x7F;
+
 	return true;
 }
 
