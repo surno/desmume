@@ -838,20 +838,33 @@ processPacket_gdb( SOCKET_TYPE sock, const uint8_t *packet,
       if ( *rx_ptr++ == ',') {
         if ( hexToInt(&rx_ptr, &length)) {
           if ( *rx_ptr++ == ':') {
-            uint8_t write_byte;
-            unsigned int i;
-            DEBUG_LOG("Memory write of %d bytes to %08x\n",
-                      length, addr);
-
-            for ( i = 0; i < length; i++) {
-              rx_ptr = hex2mem( rx_ptr, &write_byte, 1);
-
-              stub->direct_memio->write8( stub->direct_memio->data,
-                                         addr++, write_byte);
+            /* rx_ptr now points at the hex-encoded payload within the
+             * NUL-terminated receive buffer. A client-supplied length
+             * claiming more bytes than actually follow would make
+             * hex2mem() read (and write to emulated memory) past the
+             * end of that fixed-size buffer, so clamp against what is
+             * actually available before consuming it. */
+            size_t availableHexChars = strlen( (const char *)rx_ptr);
+            if ( (uint64_t)length * 2 > (uint64_t)availableHexChars) {
+              strcpy( (char *)out_ptr, "E03");
+              error01 = 0;
             }
+            else {
+              uint8_t write_byte;
+              unsigned int i;
+              DEBUG_LOG("Memory write of %d bytes to %08x\n",
+                        length, addr);
 
-            strcpy( (char *)out_ptr, "OK");
-            error01 = 0;
+              for ( i = 0; i < length; i++) {
+                rx_ptr = hex2mem( rx_ptr, &write_byte, 1);
+
+                stub->direct_memio->write8( stub->direct_memio->data,
+                                           addr++, write_byte);
+              }
+
+              strcpy( (char *)out_ptr, "OK");
+              error01 = 0;
+            }
           }
         }
         else {
