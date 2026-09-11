@@ -333,9 +333,13 @@ void rtcWrite(u16 val)
 		case 3:			// write:
 			if( (rtc._prevSCK) && (!rtc._SCK) )
 			{
-				if(rtc._SIO) rtc.data[rtc.bitsCount >> 3] |= (1 << (rtc.bitsCount & 0x07));
+				// rtc.bitsCount and rtc.cmd can be loaded verbatim (and unmasked)
+				// from a savestate via the generic SF_RTC chunk, so mask the
+				// derived indices to stay within the 8-byte data[]/cmdBitsSize[]
+				// arrays and avoid an out-of-bounds write/read below.
+				if(rtc._SIO) rtc.data[(rtc.bitsCount >> 3) & 0x07] |= (1 << (rtc.bitsCount & 0x07));
 				rtc.bitsCount++;
-				if (rtc.bitsCount == rtc.cmdBitsSize[rtc.cmd >> 1])
+				if (rtc.bitsCount == rtc.cmdBitsSize[(rtc.cmd >> 1) & 0x07])
 				{
 					rtcSend();
 					rtc.cmdStat = 0;
@@ -347,13 +351,13 @@ void rtcWrite(u16 val)
 			if( (rtc._prevSCK) && (!rtc._SCK) )
 			{
 				rtc._REG = val;
-				if((rtc.data[(rtc.bitsCount >> 3)] >> (rtc.bitsCount & 0x07)) & 0x01) 
+				if((rtc.data[(rtc.bitsCount >> 3) & 0x07] >> (rtc.bitsCount & 0x07)) & 0x01)
 					rtc._REG |= 0x01;
 				else
 					rtc._REG &= ~0x01;
 
 				rtc.bitsCount++;
-				if (rtc.bitsCount == rtc.cmdBitsSize[rtc.cmd >> 1] || (!(val & 0x04)))
+				if (rtc.bitsCount == rtc.cmdBitsSize[(rtc.cmd >> 1) & 0x07] || (!(val & 0x04)))
 					rtc.cmdStat = 0;
 			}
 		break;
