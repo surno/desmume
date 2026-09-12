@@ -146,7 +146,7 @@ public:
 	
 	static bool ARparser(const CHEATS_LIST &cheat);
 	
-	static void StringFromXXCode(const CHEATS_LIST &srcCheatItem, char *outCStringBuffer);
+	static void StringFromXXCode(const CHEATS_LIST &srcCheatItem, char *outCStringBuffer, size_t outCStringBufferSize);
 	static bool XXCodeFromString(const std::string codeString, CHEATS_LIST &outCheatItem);
 	static bool XXCodeFromString(const char *codeString, CHEATS_LIST &outCheatItem);
 };
