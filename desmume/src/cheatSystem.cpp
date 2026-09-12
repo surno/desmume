@@ -1238,14 +1238,34 @@ bool CHEATS::ResetJitIfNeeded()
 	return didJitReset;
 }
 
-void CHEATS::StringFromXXCode(const CHEATS_LIST &srcCheatItem, char *outCStringBuffer)
+void CHEATS::StringFromXXCode(const CHEATS_LIST &srcCheatItem, char *outCStringBuffer, size_t outCStringBufferSize)
 {
-	char buf[50] = { 0 };
+	if (outCStringBuffer == NULL || outCStringBufferSize == 0)
+	{
+		return;
+	}
+
+	outCStringBuffer[0] = '\0';
+	size_t usedLength = 0;
 
 	for (u32 i = 0; i < srcCheatItem.num; i++)
 	{
-		snprintf(buf, 19, "%08X %08X\n", srcCheatItem.code[i][0], srcCheatItem.code[i][1]);
-		strcat(outCStringBuffer, buf);
+		char buf[19];
+		int lineLength = snprintf(buf, sizeof(buf), "%08X %08X\n", srcCheatItem.code[i][0], srcCheatItem.code[i][1]);
+		if (lineLength < 0)
+		{
+			break;
+		}
+
+		// Stop (truncating the output) rather than overrunning the caller's buffer.
+		if (usedLength + (size_t)lineLength >= outCStringBufferSize)
+		{
+			break;
+		}
+
+		memcpy(outCStringBuffer + usedLength, buf, (size_t)lineLength);
+		usedLength += (size_t)lineLength;
+		outCStringBuffer[usedLength] = '\0';
 	}
 }
 
