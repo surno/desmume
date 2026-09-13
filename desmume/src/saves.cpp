@@ -1366,6 +1366,12 @@ bool savestate_load(EMUFILE &is)
 
 	if (ssversion != SAVESTATE_VERSION) return false;
 
+	//the uncompressed-data path below reads (len-32) bytes to account for the
+	//32-byte header that savestate_save() skips over before writing the chunks;
+	//reject any len smaller than that header to avoid an unsigned underflow
+	//that would turn into a huge, out-of-bounds fread() into a tiny buffer.
+	if (comprlen == 0xFFFFFFFF && len < 32) return false;
+
 	std::vector<u8> buf(len);
 
 	if (comprlen != 0xFFFFFFFF)
