@@ -31,13 +31,21 @@
 #define FLASH1M_	0x5F4D3148
 #define SIIRTC_V	0x52494953
 
-static const char *saveTypes[] = {
-	"EEPROM",
-	"SRAM",
-	"FLASH",
-	"FLASH1M",
-	"SIIRTC_V",
-};
+// scanSaveTypeGBA() returns 1=EEPROM, 2=SRAM, 3=FLASH1M, 4=SIIRTC_V, 5=FLASH, 0xFF=unknown.
+// These codes are not sequential 0-based indices, so they must be mapped explicitly
+// rather than used to index an array.
+static const char *saveTypeGBAToString(u32 saveType)
+{
+	switch (saveType)
+	{
+		case 1: return "EEPROM";
+		case 2: return "SRAM";
+		case 3: return "FLASH1M";
+		case 4: return "SIIRTC_V";
+		case 5: return "FLASH";
+		default: return "Unknown";
+	}
+}
 
 class Slot2_GbaCart : public ISlot2Interface
 {
@@ -389,7 +397,7 @@ public:
 			sramSize = fSRAM->size();
 			printf("Scanning GBA rom to ID save type\n");
 			saveType = scanSaveTypeGBA();
-			printf("\nGBASlot found SRAM (%s - %u bytes) at:\n%s\n", (saveType == 0xFF)?"Unknown":saveTypes[saveType], sramSize, GBACartridge_SRAMPath.c_str());
+			printf("\nGBASlot found SRAM (%s - %u bytes) at:\n%s\n", saveTypeGBAToString(saveType), sramSize, GBACartridge_SRAMPath.c_str());
 			gbaFlash.size = sramSize;
 			if (gbaFlash.size <= (64 * 1024))
 			{
