@@ -542,6 +542,15 @@ static bool mmu_loadstate(EMUFILE &is, int size)
 		if (addr_size == 0xFFFFFFFF)
 			return false;
 
+		if (bupmem_size > MC_SIZE_512MBITS)
+		{
+			//corrupt or malicious savestate: when version == 1, addr_size can be
+			//resolved purely from bupmem_type, leaving bupmem_size unvalidated.
+			//reject sizes larger than the largest known backup memory size before
+			//using it as an allocation/read length.
+			return false;
+		}
+
 		u8 *temp = new u8[bupmem_size];
 		is.fread(temp,bupmem_size);
 		MMU_new.backupDevice.load_old_state(addr_size,temp,bupmem_size);
