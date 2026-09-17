@@ -1924,8 +1924,13 @@ u8* CheatDBGame::LoadEntryData(FILE *fp, const bool isEncrypted)
 	}
 	
 	this->_entryDataRawPtr = (u8 *)malloc(this->_workingDataSize + 8);
+	if (this->_entryDataRawPtr == NULL)
+	{
+		this->_entryData = NULL;
+		return this->_entryData;
+	}
 	memset(this->_entryDataRawPtr, 0, this->_workingDataSize + 8);
-	
+
 	bool didReadSuccessfully = CheatDBFile::ReadToBuffer(fp, this->_baseOffset, isEncrypted, this->_encryptOffset, this->_workingDataSize, this->_entryDataRawPtr);
 	if (!didReadSuccessfully)
 	{
@@ -1953,59 +1958,119 @@ u8* CheatDBGame::LoadEntryData(FILE *fp, const bool isEncrypted)
 	tempEntry.parent = NULL;
 	tempEntry.child.resize(0);
 	
+	// this->_entryCount comes directly from the (possibly malicious/corrupt) database file and is
+	// otherwise unbounded, and cmd can be advanced by attacker-controlled amounts each iteration.
+	// Every access below must therefore be checked against the actual extent of the allocation
+	// backing this->_entryData (this->_entryDataRawPtr .. this->_entryDataRawPtr + this->_workingDataSize + 8)
+	// before it is dereferenced, and parsing must stop as soon as the data is found to run past
+	// the buffer instead of reading/walking off the end of it.
+	const u8 *entryDataBufferEnd = this->_entryDataRawPtr + this->_workingDataSize + 8;
+
 	const uintptr_t ptrMask = ~(uintptr_t)0x00000003;
 	u32 *cmd = (u32 *)(this->_entryData + this->_firstEntryOffset - this->_baseOffset);
-	
+
 	for (size_t i = 0; i < this->_entryCount; i++)
 	{
+		if ( ((const u8 *)cmd < this->_entryDataRawPtr) || (((const u8 *)cmd + sizeof(u32)) > entryDataBufferEnd) )
+		{
+			// Entry data is corrupt or truncated -- stop parsing rather than read past the buffer.
+			break;
+		}
+
 		const u32 entryValue = *cmd;
 		const bool isFolder = ((entryValue & 0xF0000000) == 0x10000000);
-		
+
 		currentDirectory->child.push_back(tempEntry);
 		CheatDBEntry &newEntry = currentDirectory->child.back();
 		newEntry.parent = currentDirectory;
-		
+
 		const u32 baseOffset = (u32)((uintptr_t)cmd - (uintptr_t)this->_entryData);
 		newEntry.base = this->_entryData + baseOffset;
-		
+
 		const u32 nameOffset = baseOffset + 4;
 		newEntry.name = (char *)(this->_entryData + nameOffset);
-		
-		const u32 noteOffset = nameOffset + (u32)strlen(newEntry.name) + 1;
+
+		if ((const u8 *)newEntry.name >= entryDataBufferEnd)
+		{
+			currentDirectory->child.pop_back();
+			break;
+		}
+
+		const size_t nameMaxLen = (size_t)(entryDataBufferEnd - (const u8 *)newEntry.name);
+		const size_t nameLen = strnlen(newEntry.name, nameMaxLen);
+		if (nameLen >= nameMaxLen)
+		{
+			// Name string is not NUL-terminated within the buffer -- data is corrupt.
+			currentDirectory->child.pop_back();
+			break;
+		}
+
+		const u32 noteOffset = nameOffset + (u32)nameLen + 1;
 		newEntry.note = (char *)(this->_entryData + noteOffset);
-		
+
+		if ((const u8 *)newEntry.note >= entryDataBufferEnd)
+		{
+			currentDirectory->child.pop_back();
+			break;
+		}
+
+		const size_t noteMaxLen = (size_t)(entryDataBufferEnd - (const u8 *)newEntry.note);
+		const size_t noteLen = strnlen(newEntry.note, noteMaxLen);
+		if (noteLen >= noteMaxLen)
+		{
+			// Note string is not NUL-terminated within the buffer -- data is corrupt.
+			currentDirectory->child.pop_back();
+			break;
+		}
+
 		if (isFolder)
 		{
 			newEntry.codeLength = NULL;
 			newEntry.codeData = NULL;
-			cmd = (u32 *)( ((uintptr_t)newEntry.note + strlen(newEntry.note) + 1 + 3) & ptrMask );
-			
+			cmd = (u32 *)( ((uintptr_t)newEntry.note + noteLen + 1 + 3) & ptrMask );
+
 			const u32 entryCount = entryValue & 0x00FFFFFF;
-			
+
 			if (entryCount > 0)
 			{
 				// Reserve the memory now to avoid std::vector from doing any memory
 				// reallocations that would mess up the parent pointers.
 				newEntry.child.reserve(entryCount);
-				
+
 				if (currentDirectoryItemCount > 1)
 				{
 					currentDirectoryItemCount--;
 					directoryItemCountList.push_back(currentDirectoryItemCount);
 				}
 			}
-			
+
 			currentDirectoryItemCount = entryCount;
 			currentDirectory = &newEntry;
 		}
 		else
 		{
-			const u32 codeLengthOffset = (noteOffset + (u32)strlen(newEntry.note) + 1 + 3) & 0xFFFFFFFC;
-			newEntry.codeLength = (u32 *)(this->_entryData + codeLengthOffset);
-			
+			const u32 codeLengthOffset = (noteOffset + (u32)noteLen + 1 + 3) & 0xFFFFFFFC;
+			const u8 *codeLengthPtr = this->_entryData + codeLengthOffset;
+			if ( (codeLengthPtr < this->_entryDataRawPtr) || ((codeLengthPtr + sizeof(u32)) > entryDataBufferEnd) )
+			{
+				currentDirectory->child.pop_back();
+				break;
+			}
+
 			const u32 codeDataOffset = codeLengthOffset + 4;
-			newEntry.codeData = (u32 *)(this->_entryData + codeDataOffset);
-			
+			const u8 *codeDataPtr = this->_entryData + codeDataOffset;
+			// codeCount mirrors the (*codeLength / 2) calculation in _CreateCheatItemFromCheatEntry(),
+			// which is how many pairs of 32-bit words will actually be read from codeData.
+			const u32 codeWordsNeeded = (*(const u32 *)codeLengthPtr / 2) * 2;
+			if ( (codeDataPtr < this->_entryDataRawPtr) || ((codeDataPtr + ((size_t)codeWordsNeeded * sizeof(u32))) > entryDataBufferEnd) )
+			{
+				currentDirectory->child.pop_back();
+				break;
+			}
+
+			newEntry.codeLength = (u32 *)codeLengthPtr;
+			newEntry.codeData = (u32 *)codeDataPtr;
+
 			const u32 entrySize = (entryValue & 0x00FFFFFF) + 1; // Note that this does not represent bytes, but the number of 32-bit chunks.
 			cmd += entrySize;
 			
@@ -2518,6 +2583,12 @@ bool CHEATSEXPORT::load(const char *path)
 	}
 	
 	this->_cheats = (CHEATS_LIST *)malloc( sizeof(CHEATS_LIST) * dbGamePtr->GetEntryCount() );
+	if (this->_cheats == NULL)
+	{
+		printf("ERROR: Failed to allocate memory for cheat entries.\n");
+		this->_lastError = CheatSystemError_LoadEntryError;
+		return didLoadSucceed;
+	}
 	memset(this->_cheats, 0, sizeof(CHEATS_LIST) * dbGamePtr->GetEntryCount());
 	
 	const size_t parsedCheatCount = dbGamePtr->ParseEntriesToCheatsListFlat(this->_cheats);
