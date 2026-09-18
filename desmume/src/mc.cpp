@@ -1605,6 +1605,7 @@ bool BackupDevice::import_dsv(const char *filename)
 	const bool isFileValid = BackupDevice::GetDSVFileInfo(theFile, &importFileFooter, &importFileSize);
 	if (!isFileValid)
 	{
+		fclose(theFile);
 		return result;
 	}
 	
