@@ -701,7 +701,8 @@ const char* _CDECL_ FCEUI_LoadMovie(const char *fname, bool _read_only, bool tas
 	{
 		// SS file name should be the same as the movie file name, except for extension
 		std::string ssName = fname;
-		ssName.erase(ssName.length() - 3, 3);
+		if (ssName.length() >= 3)
+			ssName.erase(ssName.length() - 3, 3);
 		ssName.append("dst");
 		if (!savestate_load(ssName.c_str()))
 			return "Could not load movie's savestate. There should be a .dst file with the same name as the movie, in the same folder.";
@@ -834,7 +835,8 @@ void FCEUI_SaveMovie(const char *fname, std::wstring author, START_FROM startFro
 	{
 		// SS file name should be the same as the movie file name, except for extension
 		std::string ssName = fname;
-		ssName.erase(ssName.length() - 3, 3);
+		if (ssName.length() >= 3)
+			ssName.erase(ssName.length() - 3, 3);
 		ssName.append("dst");
 		savestate_save(ssName.c_str());
 		currMovieData.savestate = true;
