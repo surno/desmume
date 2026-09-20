@@ -363,9 +363,9 @@ static FORCEINLINE void __mtx4_scale_vec3_float_SSE(float (&__restrict inoutMtx)
 		_mm_shuffle_ps(inVec_m128, inVec_m128, 0xAA)
 	};
 	
-	_mm_store_ps( inoutMtx, _mm_mul_ps( _mm_load_ps(inoutMtx+0), v[0] ) );
-	_mm_store_ps( inoutMtx, _mm_mul_ps( _mm_load_ps(inoutMtx+4), v[1] ) );
-	_mm_store_ps( inoutMtx, _mm_mul_ps( _mm_load_ps(inoutMtx+8), v[2] ) );
+	_mm_store_ps( inoutMtx+0, _mm_mul_ps( _mm_load_ps(inoutMtx+0), v[0] ) );
+	_mm_store_ps( inoutMtx+4, _mm_mul_ps( _mm_load_ps(inoutMtx+4), v[1] ) );
+	_mm_store_ps( inoutMtx+8, _mm_mul_ps( _mm_load_ps(inoutMtx+8), v[2] ) );
 }
 
 static FORCEINLINE void __mtx4_translate_vec3_float_SSE(float (&__restrict inoutMtx)[16], const float (&__restrict inVec)[4])
