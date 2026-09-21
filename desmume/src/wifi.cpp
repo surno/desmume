@@ -3900,6 +3900,14 @@ const u8* WifiHandler::_RXPacketFilter(const u8* rxBuffer, const size_t rxBytes,
 					{
 						rxPacketSize = desmumeFrameHeader->emuPacketSize;
 					}
+
+					// rxBytes is derived from the attacker-controlled emuPacketSize itself, so the
+					// check above never actually bounds rxPacketSize; clamp it here against the
+					// fixed-size rxData buffer it's later memcpy'd into (leaving room for the FCS).
+					if(rxPacketSize > (MAX_PACKET_SIZE_80211 - sizeof(u32)))
+					{
+						rxPacketSize = MAX_PACKET_SIZE_80211 - sizeof(u32);
+					}
 					break;
 				}
 
