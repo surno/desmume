@@ -80,7 +80,7 @@ u16 CFIRMWARE::_getBootCodeCRC16(const u8 *arm9Data, const u32 arm9Size, const u
 	return (crc & 0xFFFF);
 }
 
-u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
+u32 CFIRMWARE::_decrypt(const u8 *in, size_t inBufSize, u8* &out)
 {
 	u32 curBlock[2] = { 0 };
 	u32 blockSize = 0;
@@ -93,6 +93,8 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 	u32 windowOffset = 0;
 	u8 d = 0;
 	u16 data = 0;
+
+	if (inBufSize < 8) return (0);
 
 	memcpy(curBlock, in, 8);
 	enc.decrypt(curBlock);
@@ -111,6 +113,7 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 		xIn++;
 		if((xIn % 8) == 0)
 		{
+			if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 			memcpy(curBlock, in + xIn, 8);
 			enc.decrypt(curBlock);
 		}
@@ -123,6 +126,7 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 					enc.decrypt(curBlock);
 				}
@@ -130,12 +134,15 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 					enc.decrypt(curBlock);
 				}
 
 				len = (data >> 12) + 3;
 				offset = (data & 0xFFF);
+
+				if (offset + 1 > xOut) { delete [] out; out = NULL; return (0); }
 				windowOffset = (xOut - offset - 1);
 
 				for(j = 0; j < len; j++)
@@ -155,6 +162,7 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 					enc.decrypt(curBlock);
 				}
@@ -166,11 +174,11 @@ u32 CFIRMWARE::_decrypt(const u8 *in, u8* &out)
 			d = ((d << 1) & 0xFF);
 		}
 	}
-	
+
 	return (blockSize);
 }
 
-u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
+u32 CFIRMWARE::_decompress(const u8 *in, size_t inBufSize, u8* &out)
 {
 	u32 curBlock[2] = { 0 };
 	u32 blockSize = 0;
@@ -183,6 +191,8 @@ u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
 	u32 windowOffset = 0;
 	u8 d = 0;
 	u16 data = 0;
+
+	if (inBufSize < 8) return (0);
 
 	memcpy(curBlock, in, 8);
 	blockSize = (curBlock[0] >> 8);
@@ -200,6 +210,7 @@ u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
 		xIn++;
 		if((xIn % 8) == 0)
 		{
+			if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 			memcpy(curBlock, in + xIn, 8);
 		}
 
@@ -211,17 +222,21 @@ u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 				}
 				data |= T1ReadByte((u8*)curBlock, (xIn % 8));
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 				}
 
 				len = (data >> 12) + 3;
 				offset = (data & 0xFFF);
+
+				if (offset + 1 > xOut) { delete [] out; out = NULL; return (0); }
 				windowOffset = (xOut - offset - 1);
 
 				for(j = 0; j < len; j++)
@@ -241,6 +256,7 @@ u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
 				xIn++;
 				if((xIn % 8) == 0)
 				{
+					if ((size_t)xIn + 8 > inBufSize) { delete [] out; out = NULL; return (0); }
 					memcpy(curBlock, in + xIn, 8);
 				}
 
@@ -251,7 +267,7 @@ u32 CFIRMWARE::_decompress(const u8 *in, u8* &out)
 			d = ((d << 1) & 0xFF);
 		}
 	}
-	
+
 	return (blockSize);
 }
 //================================================================================
@@ -333,6 +349,13 @@ bool CFIRMWARE::unpack()
 	part4addr = (this->_header.part4_rom_wifi7_addr << 3);
 	part5addr = (this->_header.part5_data_gfx_addr << 3);
 
+	if (part1addr >= sizeof(workingFirmwareData->_raw) || part2addr >= sizeof(workingFirmwareData->_raw))
+	{
+		INFO("Firmware: ERROR: boot code address in the firmware header is out of range of the firmware image\n");
+		delete workingFirmwareData;
+		return false;
+	}
+
 	u32 ARM9bootAddr = part1ram;
 	u32 ARM7bootAddr = part2ram;
 
@@ -355,14 +378,14 @@ bool CFIRMWARE::unpack()
 	u32 arm9Size = 0;
 	u32 arm7Size = 0;
 	
-	arm9Size = this->_decrypt(&workingFirmwareData->_raw[part1addr], tmp_data9);
+	arm9Size = this->_decrypt(&workingFirmwareData->_raw[part1addr], sizeof(workingFirmwareData->_raw) - part1addr, tmp_data9);
 	if (tmp_data9 == NULL)
 	{
 		delete workingFirmwareData;
 		return false;
 	}
 
-	arm7Size = this->_decrypt(&workingFirmwareData->_raw[part2addr], tmp_data7);
+	arm7Size = this->_decrypt(&workingFirmwareData->_raw[part2addr], sizeof(workingFirmwareData->_raw) - part2addr, tmp_data7);
 	if (tmp_data7 == NULL)
 	{
 		delete [] tmp_data9;
@@ -444,14 +467,21 @@ bool CFIRMWARE::unpack()
 		ARM9bootAddr = part1ram;
 		ARM7bootAddr = part2ram;
 
-		arm9Size = this->_decompress(&workingFirmwareData->_raw[part1addr], tmp_data9);
+		if (part1addr >= sizeof(workingFirmwareData->_raw) || part2addr >= sizeof(workingFirmwareData->_raw))
+		{
+			INFO("Firmware: ERROR: patched boot code address in the firmware header is out of range of the firmware image\n");
+			delete workingFirmwareData;
+			return false;
+		}
+
+		arm9Size = this->_decompress(&workingFirmwareData->_raw[part1addr], sizeof(workingFirmwareData->_raw) - part1addr, tmp_data9);
 		if (tmp_data9 == NULL)
 		{
 			delete workingFirmwareData;
 			return false;
 		}
 
-		arm7Size = this->_decompress(&workingFirmwareData->_raw[part2addr], tmp_data7);
+		arm7Size = this->_decompress(&workingFirmwareData->_raw[part2addr], sizeof(workingFirmwareData->_raw) - part2addr, tmp_data7);
 		if (tmp_data7 == NULL)
 		{
 			delete [] tmp_data9;
