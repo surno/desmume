@@ -426,8 +426,8 @@ private:
 	u32 _userDataAddr;
 	
 	u16 _getBootCodeCRC16(const u8 *arm9Data, const u32 arm9Size, const u8 *arm7Data, const u32 arm7Size);
-	u32 _decrypt(const u8 *in, u8* &out);
-	u32 _decompress(const u8 *in, u8* &out);
+	u32 _decrypt(const u8 *in, size_t inBufSize, u8* &out);
+	u32 _decompress(const u8 *in, size_t inBufSize, u8* &out);
 
 public:
 	CFIRMWARE();
