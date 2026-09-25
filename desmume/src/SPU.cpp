@@ -1013,7 +1013,7 @@ void SPU_struct::WriteLong(u32 addr, u32 val)
 			break;
 
 		//SOUNDBIAS
-		case 0x504: regs.soundbias = (val & 0x3FF);
+		case 0x504: regs.soundbias = (val & 0x3FF); break;
 
 		//SNDCAP0CNT/SNDCAP1CNT
 		case 0x508:
