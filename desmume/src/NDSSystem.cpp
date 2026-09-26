@@ -167,11 +167,10 @@ int NDS_Init()
 	printf("%s\n", EMU_DESMUME_NAME_AND_VERSION());
 	
 	{
-		char	buf[MAX_PATH];
-		memset(buf, 0, MAX_PATH);
-		strcpy(buf, path.pathToModule);
-		strcat(buf, "desmume.ddb");							// DeSmuME database	:)
-		advsc.setDatabase(buf);
+		// path.pathToModule can be up to MAX_PATH*8 bytes long, so a MAX_PATH-sized
+		// stack buffer here would overflow; build the database path as a std::string instead.
+		std::string buf = std::string(path.pathToModule) + "desmume.ddb";	// DeSmuME database	:)
+		advsc.setDatabase(buf.c_str());
 
 		//why is this done here? shitty engineering. not intended.
 		NDS_RunAdvansceneAutoImport();
