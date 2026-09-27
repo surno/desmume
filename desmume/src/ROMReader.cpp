@@ -35,17 +35,18 @@
 
 ROMReader_struct * ROMReaderInit(char ** filename)
 {
+	size_t len = strlen(*filename);
 #ifdef HAVE_LIBZ
-	if(!strcasecmp(".gz", *filename + (strlen(*filename) - 3)))
+	if (len >= 3 && !strcasecmp(".gz", *filename + (len - 3)))
 	{
-		(*filename)[strlen(*filename) - 3] = '\0';
+		(*filename)[len - 3] = '\0';
 		return &GZIPROMReader;
 	}
 #endif
 #ifdef HAVE_LIBZZIP
-	if (!strcasecmp(".zip", *filename + (strlen(*filename) - 4)))
+	if (len >= 4 && !strcasecmp(".zip", *filename + (len - 4)))
 	{
-		(*filename)[strlen(*filename) - 4] = '\0';
+		(*filename)[len - 4] = '\0';
 		return &ZIPROMReader;
 	}
 #endif
