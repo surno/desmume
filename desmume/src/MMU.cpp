@@ -6168,9 +6168,9 @@ u32 DESMUME_FASTCALL _MMU_ARM7_read32(u32 adr)
 			case REG_TM2CNTL :
 			case REG_TM3CNTL :
 				{
-					u32 hi = T1ReadWord(MMU.ARM9_REG, (adr + 2) & 0xFF);
-					return (hi<<16)|read_timer(ARMCPU_ARM9,(adr&0xF)>>2);
-				}	
+					u32 hi = T1ReadWord(MMU.ARM7_REG, (adr + 2) & 0xFF);
+					return (hi<<16)|read_timer(ARMCPU_ARM7,(adr&0xF)>>2);
+				}
 
 			//case REG_GCROMCTRL:
 			//	return MMU_readFromGCControl<ARMCPU_ARM7>();
