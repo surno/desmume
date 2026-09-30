@@ -213,41 +213,26 @@ int GZIPROMReaderWrite(void *, void *, u32)
 #endif
 
 #ifdef HAVE_LIBZZIP
-void * ZIPROMReaderInit(const char * filename);
-void ZIPROMReaderDeInit(void *);
-u32 ZIPROMReaderSize(void *);
-int ZIPROMReaderSeek(void *, int, int);
-int ZIPROMReaderRead(void *, void *, u32);
-int ZIPROMReaderWrite(void *, void *, u32);
-
-ROMReader_struct ZIPROMReader =
-{
-	ROMREADER_ZIP,
-	"Zip ROM Reader",
-	ZIPROMReaderInit,
-	ZIPROMReaderDeInit,
-	ZIPROMReaderSize,
-	ZIPROMReaderSeek,
-	ZIPROMReaderRead,
-	ZIPROMReaderWrite
-};
-
 void * ZIPROMReaderInit(const char * filename)
 {
 	ZZIP_DIR * dir = zzip_opendir(filename);
-	ZZIP_DIRENT * dirent = zzip_readdir(dir);
-	if (dir != NULL)
-	{
-		char *tmp1;
-		char tmp2[1024];
+	if (dir == NULL)
+		return NULL;
 
-		memset(tmp2,0,sizeof(tmp2));
-		tmp1 = strndup(filename, strlen(filename) - 4);
-		sprintf(tmp2, "%s/%s", tmp1, dirent->d_name);
-		free(tmp1);
-		return zzip_fopen(tmp2, "rb");
-	}
-	return NULL;
+	ZZIP_DIRENT * dirent = zzip_readdir(dir);
+	if (dirent == NULL || strlen(filename) < 4)
+		return NULL;
+
+	char *tmp1;
+	char tmp2[1024];
+
+	memset(tmp2,0,sizeof(tmp2));
+	tmp1 = strndup(filename, strlen(filename) - 4);
+	if (tmp1 == NULL)
+		return NULL;
+	snprintf(tmp2, sizeof(tmp2), "%s/%s", tmp1, dirent->d_name);
+	free(tmp1);
+	return zzip_fopen(tmp2, "rb");
 }
 
 void ZIPROMReaderDeInit(void * file)
