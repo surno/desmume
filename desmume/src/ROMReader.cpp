@@ -213,6 +213,25 @@ int GZIPROMReaderWrite(void *, void *, u32)
 #endif
 
 #ifdef HAVE_LIBZZIP
+void * ZIPROMReaderInit(const char * filename);
+void ZIPROMReaderDeInit(void *);
+u32 ZIPROMReaderSize(void *);
+int ZIPROMReaderSeek(void *, int, int);
+int ZIPROMReaderRead(void *, void *, u32);
+int ZIPROMReaderWrite(void *, void *, u32);
+
+ROMReader_struct ZIPROMReader =
+{
+	ROMREADER_ZIP,
+	"Zip ROM Reader",
+	ZIPROMReaderInit,
+	ZIPROMReaderDeInit,
+	ZIPROMReaderSize,
+	ZIPROMReaderSeek,
+	ZIPROMReaderRead,
+	ZIPROMReaderWrite
+};
+
 void * ZIPROMReaderInit(const char * filename)
 {
 	ZZIP_DIR * dir = zzip_opendir(filename);
