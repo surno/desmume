@@ -1266,7 +1266,7 @@ bool CHEATS::XXCodeFromString(const char *codeString, CHEATS_LIST &outCheatItem)
 	}
 	
 	size_t	count = 0;
-	u16		t = 0;
+	size_t	t = 0;
 	
 	const size_t tmpBufferSize = sizeof(outCheatItem.code) * 2 + 1;
 	char *tmp_buf = (char *)malloc(tmpBufferSize);
@@ -1288,6 +1288,13 @@ bool CHEATS::XXCodeFromString(const char *codeString, CHEATS_LIST &outCheatItem)
 		if (strchr(AR_Valid, c))
 		{
 			if(c=='o' || c=='O') c='0';
+			if (t >= tmpBufferSize - 1)
+			{
+				// More digits than outCheatItem.code can hold
+				free(tmp_buf);
+				didValidateCode = false;
+				return didValidateCode;
+			}
 			tmp_buf[t++] = c;
 		}
 	}
