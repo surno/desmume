@@ -315,6 +315,15 @@ TEMPLATE static u32 divide()
      
      if(dnum==0) return 0;
      
+	 //INT_MIN / -1 overflows (UB, SIGFPE on x86): the hardware yields quotient 0x80000000 and remainder 0
+	 if(dnum==-1 && num==(s32)0x80000000)
+	 {
+		cpu->R[0] = 0x80000000;
+		cpu->R[1] = 0;
+		cpu->R[3] = 0x80000000;
+		return 6;
+	 }
+
 	 s32 res = num / dnum;
      cpu->R[0] = (u32)res;
      cpu->R[1] = (u32)(num % dnum);
