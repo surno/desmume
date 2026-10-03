@@ -405,8 +405,16 @@ void PathInfo::getfilename(char *buffer, int maxCount)
 
 void PathInfo::getpathnoext(KnownPath path, char *buffer)
 {
+	// Callers pass MAX_PATH-sized buffers; never write past them, even for very long ROM names.
 	getpath(path, buffer);
-	strcat(buffer, GetRomNameWithoutExtension().c_str());
+	buffer[MAX_PATH - 1] = '\0';
+
+	const size_t used = strlen(buffer);
+	const std::string name = GetRomNameWithoutExtension();
+	const size_t room = (MAX_PATH - 1) - used;
+	const size_t n = (name.size() < room) ? name.size() : room;
+	memcpy(buffer + used, name.c_str(), n);
+	buffer[used + n] = '\0';
 }
 
 std::string PathInfo::extension()

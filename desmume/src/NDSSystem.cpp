@@ -827,7 +827,8 @@ int NDS_LoadROM(const char *filename, const char *physicalName, const char *logi
 	{
 		memset(buf, 0, MAX_PATH);
 		path.getpathnoext(path.CHEATS, buf);
-		strcat(buf, ".dct");						// DeSmuME cheat		:)
+		if (strlen(buf) + strlen(".dct") < MAX_PATH)
+			strcat(buf, ".dct");					// DeSmuME cheat		:)
 		cheats->init(buf);
 	}
 
