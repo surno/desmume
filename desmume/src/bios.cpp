@@ -941,6 +941,9 @@ TEMPLATE static u32 Diff8bitUnFilterWram() //this one might be different on arm7
 	if(header.Type() != 8) printf("WARNING: incorrect header passed to Diff8bitUnFilterWram\n");
 	u32 len = header.DecompressedSize();
 
+	//a zero length would underflow len below and loop ~4 billion times
+	if(len == 0) return 1;
+
 	u8 data = _MMU_read08<PROCNUM>(source++);
 	_MMU_write08<PROCNUM>(dest++, data);
 	len--;
@@ -967,6 +970,9 @@ TEMPLATE static u32 Diff16bitUnFilter()
 	if(header.DataSize() != 2) printf("WARNING: incorrect header passed to Diff16bitUnFilter\n");
 	if(header.Type() != 8) printf("WARNING: incorrect header passed to Diff16bitUnFilter\n");
 	u32 len = header.DecompressedSize();
+
+	//len < 2 would underflow len below and loop ~4 billion times
+	if(len < 2) return 1;
 
 	u16 data = _MMU_read16<PROCNUM>(source);
 	source += 2;
