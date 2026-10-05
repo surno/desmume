@@ -189,7 +189,13 @@ u32 GZIPROMReaderSize(void * file)
 	 * position and restore it after size calculation */
 	gzrewind((gzFile)file);
 	while (gzeof ((gzFile)file) == 0)
-		size += gzread((gzFile)file, useless, 1024);
+	{
+		// gzread() returns -1 on a corrupt stream, and gzeof() never becomes true then
+		int read = gzread((gzFile)file, useless, 1024);
+		if (read <= 0)
+			break;
+		size += read;
+	}
 	gzrewind((gzFile)file);
 
 	return size;
