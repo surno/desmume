@@ -2369,7 +2369,10 @@ u32 CheatDBFile::LoadGameList(const char *gameCode, const u32 gameDatabaseCRC, C
 	else
 	{
 		fseek(this->_fp, pos, SEEK_SET);
-		fread(&fatEntryNext, sizeof(fatEntryNext), 1, this->_fp);
+		if (fread(&fatEntryNext, sizeof(fatEntryNext), 1, this->_fp) != 1)
+		{
+			memset(&fatEntryNext, 0, sizeof(fatEntryNext));
+		}
 	}
 	
 	do
@@ -2397,7 +2400,14 @@ u32 CheatDBFile::LoadGameList(const char *gameCode, const u32 gameDatabaseCRC, C
 			memcpy(&fatEntryCurrent, &fatEntryNext, sizeof(fatEntryNext));
 			pos += sizeof(fatEntryNext);
 			fseek(this->_fp, pos, SEEK_SET);
-			fread(&fatEntryNext, sizeof(fatEntryNext), 1, this->_fp);
+			
+			// If the read fails (e.g. a truncated file with no terminating FAT entry),
+			// treat it as the end of the FAT. Otherwise fatEntryNext would keep its old
+			// non-zero address and this loop would never terminate.
+			if (fread(&fatEntryNext, sizeof(fatEntryNext), 1, this->_fp) != 1)
+			{
+				memset(&fatEntryNext, 0, sizeof(fatEntryNext));
+			}
 		}
 		
 		u32 encryptOffset = 0;
