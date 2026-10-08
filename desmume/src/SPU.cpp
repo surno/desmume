@@ -28,6 +28,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <queue>
 #include <vector>
 
@@ -1200,7 +1201,7 @@ template<int FORMAT> static FORCEINLINE void TestForLoop(SPU_struct *SPU, channe
 		if(chan->loop_index == K_ADPCM_LOOPING_RECOVERY_INDEX)
 		{
 			chan->pcm16b[SPUCHAN_PCM16B_AT(chan->pcm16bOffs)] = (s16)read16(chan->addr);
-			chan->index = read08(chan->addr+2) & 0x7F;
+			chan->index = std::min<u32>(read08(chan->addr+2) & 0x7F, 88); // the step table only has 89 entries; clamp like hardware
 		}
 		else
 		{
