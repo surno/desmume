@@ -3628,14 +3628,24 @@ bool SoftAPCommInterface::_IsDNSRequestToWFC(u16 ethertype, const u8* body)
 	{
 		// Assemble the requested domain name
 		u8 bitlength = 0; char domainname[256] = "";
+		size_t domainlen = 0;
 		while((bitlength = body[curoffset++]) != 0)
 		{
+			// Guard against overflowing domainname (labels come from the guest);
+			// leave room for the label, a possible '.', and the terminator.
+			if(domainlen + bitlength + 1 >= sizeof(domainname))
+			{
+				return false;
+			}
+
 			strncat(domainname, (const char*)&body[curoffset], bitlength);
+			domainlen += bitlength;
 
 			curoffset += bitlength;
 			if(body[curoffset] != 0)
 			{
 				strcat(domainname, ".");
+				domainlen++;
 			}
 		}
 
