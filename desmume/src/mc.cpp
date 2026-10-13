@@ -1174,7 +1174,7 @@ u32 BackupDevice::get_save_nogba_size(u8 *data)
 	return 0xFFFFFFFF;
 }
 
-static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, u32 &size)
+static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, size_t out_capacity, u32 &size)
 {
 	u8	*src = (u8 *)in_buf;
 	u8	*dst = (u8 *)out_buf;
@@ -1203,6 +1203,7 @@ static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, u32 &size
 	{
 		size_unpacked = *((u32*)(src+0x48));
 		src_pos = 0x4C;
+		if (size_unpacked > out_capacity || size_unpacked > fsize - src_pos) return (4);
 		for (u32 i = 0; i < size_unpacked; i++)
 		{
 			dst[dst_pos++] = src[src_pos++];
@@ -1219,6 +1220,7 @@ static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, u32 &size
 		src_pos = 0x50;
 		while (true)
 		{
+			if (src_pos >= fsize) return (4);
 			cc = src[src_pos++];
 			
 			if (cc == 0) 
@@ -1229,7 +1231,9 @@ static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, u32 &size
 
 			if (cc == 0x80)
 			{
+				if (src_pos + 3 > fsize) return (4);
 				u16 tsize = *((u16*)(src+src_pos+1));
+				if (tsize > out_capacity - dst_pos) return (4);
 				for (int t = 0; t < tsize; t++)
 					dst[dst_pos++] = src[src_pos];
 				src_pos += 3;
@@ -1239,12 +1243,14 @@ static int no_gba_unpackSAV(void *in_buf, size_t fsize, void *out_buf, u32 &size
 			if (cc > 0x80)		// repeat
 			{
 				cc -= 0x80;
+				if (cc > out_capacity - dst_pos) return (4);
 				for (int t = 0; t < cc; t++)
 					dst[dst_pos++] = src[src_pos];
 				src_pos++;
 				continue;
 			}
 			// copy
+			if (cc > out_capacity - dst_pos || cc > fsize - src_pos) return (4);
 			for (int t = 0; t < cc; t++)
 				dst[dst_pos++] = src[src_pos++];
 		}
@@ -1309,7 +1315,7 @@ bool BackupDevice::import_no_gba(const char *fname, u32 force_size)
 			u32 size = 0;
 
 			memset(out_buf, 0xFF, 8 * 1024 * 1024 / 8);
-			if (no_gba_unpackSAV(in_buf, fsize, out_buf, size) == 0)
+			if (no_gba_unpackSAV(in_buf, fsize, out_buf, 8 * 1024 * 1024 / 8, size) == 0)
 			{
 				if (force_size > 0)
 					size = force_size;
@@ -1336,13 +1342,13 @@ bool BackupDevice::import_no_gba(const char *fname, u32 force_size)
 
 bool BackupDevice::no_gba_unpack(u8 *&buf, u32 &size)
 {
-	if (!buf) return false;
+	if (!buf || size < 0x50) return false;
 	u32 out_size = get_save_nogba_size(buf);
 	if (out_size == 0xFFFFFFFF) return false;
 	u8 *out_buf = new u8 [out_size];
 	if (out_buf)
 	{
-		if (no_gba_unpackSAV(buf, size, out_buf, out_size) == 0)
+		if (no_gba_unpackSAV(buf, size, out_buf, out_size, out_size) == 0)
 		{
 			out_size = trim(out_buf, out_size);
 			out_size = fillLeft(out_size);
