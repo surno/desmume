@@ -213,7 +213,26 @@ int GZIPROMReaderWrite(void *, void *, u32)
 #endif
 
 #ifdef HAVE_LIBZZIP
-void * ZIPROMReaderInit(const char * filename);
+void * ZIPROMReaderInit(const char * filename)
+{
+	ZZIP_DIR * dir = zzip_opendir(filename);
+	if (dir == NULL)
+		return NULL;
+
+	ZZIP_DIRENT * dirent = zzip_readdir(dir);
+	ZZIP_FILE * file = NULL;
+	if (dirent != NULL)
+	{
+		char tmp2[1024];
+		size_t len = strlen(filename);
+		int n = snprintf(tmp2, sizeof(tmp2), "%.*s/%s", (int)(len >= 4 ? len - 4 : len), filename, dirent->d_name);
+		if (n > 0 && (size_t)n < sizeof(tmp2))
+			file = zzip_fopen(tmp2, "rb");
+	}
+	zzip_closedir(dir);
+	return file;
+}
+
 void ZIPROMReaderDeInit(void *);
 u32 ZIPROMReaderSize(void *);
 int ZIPROMReaderSeek(void *, int, int);
