@@ -166,8 +166,9 @@ static void rtcRecv()
 				rtc.data[3] = tm.get_DayOfWeek();
 
 				int hour = tm.get_Hour(); 
+				const u8 pmFlag = (hour < 12) ? 0x00 : 0x40; // must be taken before the 12-hour wrap
 				if (!(rtc.regStatus1 & 0x02)) hour %= 12;
-				rtc.data[4] = ((hour < 12) ? 0x00 : 0x40) | toBCD(hour);
+				rtc.data[4] = pmFlag | toBCD(hour);
 				rtc.data[5] =  toBCD(tm.get_Minute());
 				rtc.data[6] =  toBCD(tm.get_Second());
 				break;
@@ -177,8 +178,9 @@ static void rtcRecv()
 				//INFO("RTC: read time\n");
 				DateTime tm = rtcGetTime();
 				int hour = tm.get_Hour(); 
+				const u8 pmFlag = (hour < 12) ? 0x00 : 0x40; // must be taken before the 12-hour wrap
 				if (!(rtc.regStatus1 & 0x02)) hour %= 12;
-				rtc.data[0] = ((hour < 12) ? 0x00 : 0x40) | toBCD(hour);
+				rtc.data[0] = pmFlag | toBCD(hour);
 				rtc.data[1] =  toBCD(tm.get_Minute());
 				rtc.data[2] =  toBCD(tm.get_Second());
 				break;
