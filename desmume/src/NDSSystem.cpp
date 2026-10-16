@@ -2815,7 +2815,8 @@ void NDS_Reset()
 	{
 		// Partially clobber the loaded firmware with user settings from the .dfc file.
 		std::string extFWUserSettingsString = CFIRMWARE::GetUserSettingsFilePath(CommonSettings.ExtFirmwarePath);
-		strncpy(CommonSettings.ExtFirmwareUserSettingsPath, extFWUserSettingsString.c_str(), MAX_PATH);
+		strncpy(CommonSettings.ExtFirmwareUserSettingsPath, extFWUserSettingsString.c_str(), MAX_PATH - 1);
+		CommonSettings.ExtFirmwareUserSettingsPath[MAX_PATH - 1] = '\0';
 		
 		extFirmwareObj->loadSettings(CommonSettings.ExtFirmwareUserSettingsPath);
 	}
