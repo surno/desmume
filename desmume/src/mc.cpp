@@ -1108,6 +1108,8 @@ bool BackupDevice::exportData(const char *filename)
 	if (strlen(filename) >= 5 && memcmp(filename + strlen(filename) - 5, ".sav*", 5) == 0)
 	{
 		char tmp[MAX_PATH];
+		if (strlen(filename) >= MAX_PATH)
+			return false;
 		memset(tmp, 0, MAX_PATH);
 		strcpy(tmp, filename);
 		tmp[strlen(tmp)-1] = 0;
