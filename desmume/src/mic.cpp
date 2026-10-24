@@ -68,10 +68,18 @@ void Mic_DeInit(void)
 {
 	free(micSampleBuffer);
 	micSampleBuffer = NULL;
+	micReadPosition = NULL;
+	micWritePosition = NULL;
+	micBufferFillCount = 0;
 }
 
 void Mic_Reset(void)
 {
+	// Mic_Init() may have failed, or Mic_DeInit() may have freed the buffer.
+	if (micSampleBuffer == NULL) {
+		return;
+	}
+
 	*micReadPosition = MIC_NULL_SAMPLE_VALUE;
 	micWritePosition = micReadPosition;
 	micBufferFillCount = 0;
