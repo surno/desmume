@@ -1387,7 +1387,11 @@ bool savestate_load(EMUFILE &is)
 	}
 	else
 	{
+		// legacy uncompressed savestates store 32 fewer bytes than len; reject
+		// lengths that would underflow and read far past the end of buf
+		if (len < 32) return false;
 		is.fread(&buf[0],len-32);
+		if (is.fail()) return false;
 	}
 
 	//GO!! READ THE SAVESTATE
