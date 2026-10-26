@@ -3630,6 +3630,9 @@ bool SoftAPCommInterface::_IsDNSRequestToWFC(u16 ethertype, const u8* body)
 		u8 bitlength = 0; char domainname[256] = "";
 		while((bitlength = body[curoffset++]) != 0)
 		{
+			// the packet is guest-controlled: don't let the labels overflow domainname
+			size_t curlen = strlen(domainname);
+			if(curlen + bitlength + 2 > sizeof(domainname)) return false;
 			strncat(domainname, (const char*)&body[curoffset], bitlength);
 
 			curoffset += bitlength;
