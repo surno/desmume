@@ -425,11 +425,17 @@ EXPORTED void desmume_savestate_slot_save(int index)
 
 EXPORTED BOOL desmume_savestate_slot_exists(int index)
 {
+    if (index < 0 || index >= NB_STATES) {
+        return false;
+    }
     return savestates[index].exists;
 }
 
 EXPORTED char* desmume_savestate_slot_date(int index)
 {
+    if (index < 0 || index >= NB_STATES) {
+        return NULL;
+    }
     return savestates[index].date;
 }
 
