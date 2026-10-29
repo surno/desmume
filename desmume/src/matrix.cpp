@@ -153,10 +153,10 @@ static FORCEINLINE void __mtx4_scale_vec3_float(float (&__restrict inoutMtx)[16]
 
 static FORCEINLINE void __mtx4_translate_vec3_float(float (&__restrict inoutMtx)[16], const float (&__restrict inVec)[4])
 {
-	inoutMtx[12] = (inoutMtx[0] * inVec[0]) + (inoutMtx[4] * inVec[1]) + (inoutMtx[ 8] * inVec[2]);
-	inoutMtx[13] = (inoutMtx[1] * inVec[0]) + (inoutMtx[5] * inVec[1]) + (inoutMtx[ 9] * inVec[2]);
-	inoutMtx[14] = (inoutMtx[2] * inVec[0]) + (inoutMtx[6] * inVec[1]) + (inoutMtx[10] * inVec[2]);
-	inoutMtx[15] = (inoutMtx[3] * inVec[0]) + (inoutMtx[7] * inVec[1]) + (inoutMtx[11] * inVec[2]);
+	inoutMtx[12] = (inoutMtx[0] * inVec[0]) + (inoutMtx[4] * inVec[1]) + (inoutMtx[ 8] * inVec[2]) + inoutMtx[12];
+	inoutMtx[13] = (inoutMtx[1] * inVec[0]) + (inoutMtx[5] * inVec[1]) + (inoutMtx[ 9] * inVec[2]) + inoutMtx[13];
+	inoutMtx[14] = (inoutMtx[2] * inVec[0]) + (inoutMtx[6] * inVec[1]) + (inoutMtx[10] * inVec[2]) + inoutMtx[14];
+	inoutMtx[15] = (inoutMtx[3] * inVec[0]) + (inoutMtx[7] * inVec[1]) + (inoutMtx[11] * inVec[2]) + inoutMtx[15];
 }
 
 // These SIMD functions may look fancy, but they still operate using floating-point, and therefore
@@ -377,16 +377,18 @@ static FORCEINLINE void __mtx4_translate_vec3_float_SSE(float (&__restrict inout
 		_mm_shuffle_ps(inVec_m128, inVec_m128, 0xAA)
 	};
 	
-	const __m128 row[3] = {
+	const __m128 row[4] = {
 		_mm_load_ps(inoutMtx + 0),
 		_mm_load_ps(inoutMtx + 4),
 		_mm_load_ps(inoutMtx + 8),
+		_mm_load_ps(inoutMtx + 12)
 	};
 	
 	__m128 outVec;
 	outVec =                     _mm_mul_ps(row[0], v[0]);
 	outVec = _mm_add_ps( outVec, _mm_mul_ps(row[1], v[1]) );
 	outVec = _mm_add_ps( outVec, _mm_mul_ps(row[2], v[2]) );
+	outVec = _mm_add_ps( outVec, row[3] );
 	
 	_mm_store_ps(inoutMtx+12, outVec);
 }
@@ -549,8 +551,8 @@ static FORCEINLINE void __mtx4_translate_vec3_float_NEON(float (&__restrict inou
 	
 	const float32x4x3_t row = vld1q_f32_x3(inoutMtx);
 	
-	float32x4_t outVec;
-	outVec =         vmulq_f32( row.val[0], v[0] );
+	float32x4_t outVec = vld1q_f32(inoutMtx + 12);
+	outVec = vfmaq_f32( outVec, row.val[0], v[0] );
 	outVec = vfmaq_f32( outVec, row.val[1], v[1] );
 	outVec = vfmaq_f32( outVec, row.val[2], v[2] );
 	
