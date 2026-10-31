@@ -5344,7 +5344,8 @@ void RunLuaScriptFile(int uid, const char* filenameCStr)
 
 	// TODO: store script's current directory into LuaContextInfo
 	static char dirnameCStr[MAX_PATH];
-	strcpy(dirnameCStr, filenameCStr);
+	strncpy(dirnameCStr, filenameCStr, MAX_PATH - 1);
+	dirnameCStr[MAX_PATH - 1] = '\0';
 	TrimFilenameFromPath(dirnameCStr);
 	chdir(dirnameCStr);
 
