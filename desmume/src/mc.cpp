@@ -1605,6 +1605,7 @@ bool BackupDevice::import_dsv(const char *filename)
 	const bool isFileValid = BackupDevice::GetDSVFileInfo(theFile, &importFileFooter, &importFileSize);
 	if (!isFileValid)
 	{
+		fclose(theFile);
 		return result;
 	}
 	
@@ -1620,6 +1621,12 @@ bool BackupDevice::import_dsv(const char *filename)
 	
 	// Read the backup data into memory.
 	u8 *backupData = (u8 *)malloc(importFileFooter.info.padSize);
+	if (backupData == NULL)
+	{
+		fclose(theFile);
+		printf("BackupDevice: DSV import failed! Could not allocate memory for the backup data.\n");
+		return result;
+	}
 	
 	fseek(theFile, 0, SEEK_SET);
 	const size_t backupDataReadByteCount = fread(backupData, 1, importFileFooter.info.padSize, theFile);
