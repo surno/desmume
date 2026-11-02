@@ -197,7 +197,7 @@ void PathInfo::LoadModulePath()
 	ZeroMemory(pathToModule, sizeof(pathToModule));
 
 	wchar_t wPathToModule[MAX_PATH];
-	GetModuleFileNameW(NULL, wPathToModule, sizeof(wPathToModule));
+	GetModuleFileNameW(NULL, wPathToModule, MAX_PATH);
 	p = wPathToModule + wcslen(wPathToModule);
 	while (p >= wPathToModule && *p != DIRECTORY_DELIMITER_CHAR) p--;
 	if (++p >= wPathToModule) *p = 0;
