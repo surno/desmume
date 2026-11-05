@@ -235,19 +235,23 @@ ROMReader_struct ZIPROMReader =
 void * ZIPROMReaderInit(const char * filename)
 {
 	ZZIP_DIR * dir = zzip_opendir(filename);
-	ZZIP_DIRENT * dirent = zzip_readdir(dir);
-	if (dir != NULL)
-	{
-		char *tmp1;
-		char tmp2[1024];
+	if (dir == NULL)
+		return NULL;
 
-		memset(tmp2,0,sizeof(tmp2));
-		tmp1 = strndup(filename, strlen(filename) - 4);
-		sprintf(tmp2, "%s/%s", tmp1, dirent->d_name);
-		free(tmp1);
-		return zzip_fopen(tmp2, "rb");
+	ZZIP_DIRENT * dirent = zzip_readdir(dir);
+	size_t len = strlen(filename);
+	if (dirent == NULL || len < 4)
+	{
+		// Empty archive, or a filename too short to strip the extension from
+		zzip_closedir(dir);
+		return NULL;
 	}
-	return NULL;
+
+	char tmp2[1024];
+	memset(tmp2,0,sizeof(tmp2));
+	snprintf(tmp2, sizeof(tmp2), "%.*s/%s", (int)(len - 4), filename, dirent->d_name);
+	zzip_closedir(dir);
+	return zzip_fopen(tmp2, "rb");
 }
 
 void ZIPROMReaderDeInit(void * file)
