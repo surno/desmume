@@ -1288,6 +1288,13 @@ bool CHEATS::XXCodeFromString(const char *codeString, CHEATS_LIST &outCheatItem)
 		if (strchr(AR_Valid, c))
 		{
 			if(c=='o' || c=='O') c='0';
+			if (t >= tmpBufferSize - 1)
+			{
+				// Too many hex digits for outCheatItem.code; reject instead of overflowing tmp_buf.
+				free(tmp_buf);
+				didValidateCode = false;
+				return didValidateCode;
+			}
 			tmp_buf[t++] = c;
 		}
 	}
