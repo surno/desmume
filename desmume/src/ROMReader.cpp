@@ -213,7 +213,30 @@ int GZIPROMReaderWrite(void *, void *, u32)
 #endif
 
 #ifdef HAVE_LIBZZIP
-void * ZIPROMReaderInit(const char * filename);
+void * ZIPROMReaderInit(const char * filename)
+{
+	ZZIP_DIR * dir = zzip_opendir(filename);
+	if (dir == NULL)
+		return NULL;
+
+	// An empty archive yields no directory entry.
+	ZZIP_DIRENT * dirent = zzip_readdir(dir);
+	if (dirent == NULL)
+	{
+		zzip_closedir(dir);
+		return NULL;
+	}
+
+	char tmp2[1024];
+	memset(tmp2,0,sizeof(tmp2));
+	size_t baseLen = strlen(filename);
+	baseLen = (baseLen >= 4) ? baseLen - 4 : 0;
+	// Bound the write so long paths / entry names can't overflow tmp2.
+	snprintf(tmp2, sizeof(tmp2), "%.*s/%s", (int)baseLen, filename, dirent->d_name);
+	zzip_closedir(dir);
+	return zzip_fopen(tmp2, "rb");
+}
+
 void ZIPROMReaderDeInit(void *);
 u32 ZIPROMReaderSize(void *);
 int ZIPROMReaderSeek(void *, int, int);
