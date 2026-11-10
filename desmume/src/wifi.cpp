@@ -3630,6 +3630,10 @@ bool SoftAPCommInterface::_IsDNSRequestToWFC(u16 ethertype, const u8* body)
 		u8 bitlength = 0; char domainname[256] = "";
 		while((bitlength = body[curoffset++]) != 0)
 		{
+			// Each label may be up to 255 bytes and a query may contain many labels,
+			// so make sure the assembled name (plus '.' and NUL) fits in domainname.
+			const size_t curlen = strlen(domainname);
+			if(curlen + bitlength + 2 > sizeof(domainname)) return false;
 			strncat(domainname, (const char*)&body[curoffset], bitlength);
 
 			curoffset += bitlength;
