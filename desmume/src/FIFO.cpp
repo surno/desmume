@@ -185,6 +185,26 @@ void IPC_FIFOcnt(u8 proc, u16 val)
 	NDS_Reschedule();
 }
 
+// Savestates restore the IPC FIFO's head/tail/size verbatim (saves.cpp SF_MMU),
+// and IPC_FIFOsend()/IPC_FIFOrecv() use head/tail directly as indices into the
+// 16-entry buf[]. A corrupted or crafted savestate can therefore make the next
+// FIFO access read/write outside of ipc_fifo[]. Since a consistent FIFO can
+// never be in such a state, reset any FIFO with out-of-range values to empty.
+static void IPC_FIFOsanitize(u8 proc)
+{
+	IPC_FIFO &fifo = ipc_fifo[proc];
+	const size_t capacity = ARRAY_SIZE(fifo.buf);
+
+	if ( (fifo.head >= capacity) || (fifo.tail >= capacity) || (fifo.size > capacity) )
+	{
+		printf("Savestate: invalid IPC FIFO %d state (head=%u, tail=%u, size=%u); resetting FIFO.\n",
+		       (int)proc, (unsigned)fifo.head, (unsigned)fifo.tail, (unsigned)fifo.size);
+		fifo.head = 0;
+		fifo.tail = 0;
+		fifo.size = 0;
+	}
+}
+
 // ========================================================= GFX FIFO
 GFX_PIPE	gxPIPE;
 GFX_FIFO	gxFIFO;
@@ -527,6 +547,33 @@ void DISP_FIFOrecv_LineOpaque(u32 *__restrict dst)
 				}
 			}
 		}
+	}
+}
+
+void FIFO_SanitizeLoadedState()
+{
+	IPC_FIFOsanitize(ARMCPU_ARM9);
+	IPC_FIFOsanitize(ARMCPU_ARM7);
+
+	// gxFIFO.head/tail index cmd[]/param[] (HACK_GXIFO_SIZE entries) directly in
+	// GFX_FIFOsend()/GFX_PIPErecv().
+	if ( (gxFIFO.head >= HACK_GXIFO_SIZE) || (gxFIFO.tail >= HACK_GXIFO_SIZE) || (gxFIFO.size > HACK_GXIFO_SIZE) ||
+	     (gxFIFO.matrix_stack_op_size > gxFIFO.size) )
+	{
+		printf("Savestate: invalid GX FIFO state (head=%u, tail=%u, size=%u, mtxops=%u); resetting FIFO.\n",
+		       (unsigned)gxFIFO.head, (unsigned)gxFIFO.tail, (unsigned)gxFIFO.size, (unsigned)gxFIFO.matrix_stack_op_size);
+		GFX_FIFOclear();
+	}
+
+	// disp_fifo.head/tail index buf[] (0x6000 entries) directly in
+	// DISP_FIFOsend()/DISP_FIFOrecv_*().
+	const size_t dispCapacity = ARRAY_SIZE(disp_fifo.buf);
+	if ( (disp_fifo.head >= dispCapacity) || (disp_fifo.tail >= dispCapacity) )
+	{
+		printf("Savestate: invalid display FIFO state (head=%u, tail=%u); resetting FIFO.\n",
+		       (unsigned)disp_fifo.head, (unsigned)disp_fifo.tail);
+		disp_fifo.head = 0;
+		disp_fifo.tail = 0;
 	}
 }
 
