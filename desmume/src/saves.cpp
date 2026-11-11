@@ -1420,6 +1420,10 @@ bool savestate_load(EMUFILE &is)
 		return false;
 	}
 
+	// FIFO head/tail/size values come straight from the savestate and are used
+	// as raw buffer indices, so make sure they are in range before running.
+	FIFO_SanitizeLoadedState();
+
 	loadstate();
 
 	if (nds.ConsoleType != CommonSettings.ConsoleType)

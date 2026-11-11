@@ -95,4 +95,8 @@ template<NDSColorFormat OUTPUTFORMAT> void DISP_FIFOrecv_LineOpaque(u32 *__restr
 
 void DISP_FIFOreset();
 
+// Validates FIFO indices restored from a savestate, resetting any FIFO whose
+// head/tail/size would index outside of its buffer.
+void FIFO_SanitizeLoadedState();
+
 #endif
