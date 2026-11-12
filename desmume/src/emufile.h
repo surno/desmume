@@ -218,8 +218,7 @@ public:
 		//if(_fread(&temp,1) != 1)
 		//	return EOF;
 		//else return temp;
-		u32 remain = len-pos;
-		if(remain<1) {
+		if(pos < 0 || pos >= len) {
 			this->_failbit = true;
 			return -1;
 		}

@@ -86,13 +86,17 @@ bool EMUFILE::readAllBytes(std::vector<u8>* dstbuf, const std::string& fname)
 }
 
 size_t EMUFILE_MEMORY::_fread(const void *ptr, size_t bytes){
-	u32 remain = len-pos;
-	u32 todo = std::min<u32>(remain,(u32)bytes);
-	if(len==0)
+	// pos can legitimately be beyond len (fseek() allows seeking past the end),
+	// in which case there is nothing to read. Check this before computing the
+	// remaining byte count, since (len-pos) would otherwise wrap around as an
+	// unsigned value and cause a read past the end of the buffer.
+	if(pos < 0 || pos >= len)
 	{
 		this->_failbit = true;
 		return 0;
 	}
+	u32 remain = (u32)(len-pos);
+	u32 todo = std::min<u32>(remain,(u32)bytes);
 	if(todo<=4)
 	{
 		u8* src = buf()+pos;
