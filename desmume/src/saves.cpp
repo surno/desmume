@@ -929,7 +929,16 @@ static bool ReadStateChunk(EMUFILE &is, const SFORMAT *sf, int size)
 		}
 		else
 		{
-			is.fseek(sz*count,SEEK_CUR);
+			// Skip an unrecognized field. The skip distance comes straight from
+			// the savestate, so make sure it stays within the current chunk.
+			// Otherwise a huge or wrapped-around value could move the read
+			// position backwards (looping forever) or far beyond the data.
+			const u64 skip = (u64)sz * (u64)count;
+			const s64 remainInChunk = (s64)temp + (s64)size - (s64)is.ftell();
+			if (remainInChunk < 0 || skip > (u64)remainInChunk)
+				return false;
+			
+			is.fseek((int)skip,SEEK_CUR);
 			guessSF = NULL;
 		}
 	} // while(...)
