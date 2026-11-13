@@ -1124,7 +1124,9 @@ TEMPLATE static u32 isDebugger()
 TEMPLATE static u32 SoundBias()
 {
 	u32 curBias = _MMU_read32<ARMCPU_ARM7>(0x04000504);
-	u32 newBias = (curBias == 0) ? 0x000:0x200;
+	//R0 selects the target bias level: 0 = 0x000, any other value = 0x200.
+	//(Deriving the target from the current level made this SWI a no-op.)
+	u32 newBias = (cpu->R[0] == 0) ? 0x000:0x200;
 	u32 delay = (newBias > curBias) ? (newBias-curBias) : (curBias-newBias);
 
 	_MMU_write32<ARMCPU_ARM7>(0x04000504, newBias);
