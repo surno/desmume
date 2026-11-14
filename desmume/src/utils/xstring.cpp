@@ -315,28 +315,62 @@ std::wstring mbstowcs(std::string str)
 {
 	size_t len = utf8len(str.c_str());
 	u32* tmp32 = new u32[len+1];
-	wchar_t* tmp16 = new wchar_t[len+1];
-	utf8_conv_utf32(tmp32,len+1,str.c_str(),str.size()+1);
+	
+	//the conversion stops early on malformed utf-8, so only trust the code points it reports
+	//(str.size() rather than size()+1, so that the terminator is not counted as a code point)
+	size_t converted = utf8_conv_utf32(tmp32,len,str.c_str(),str.size());
 
-	//truncate the utf32 output to utf16.
-	//I know that's amazingly sloppy, but it should work for us, probably (libretro-common's facilities are underpowered at the present)
-	for(size_t i=0;i<len+1;i++)
-		tmp16[i] = tmp32[i];
-	std::wstring ret = tmp16;
+	std::wstring ret;
+	ret.reserve(converted);
+	for(size_t i=0;i<converted;i++)
+	{
+		const u32 c = tmp32[i];
+		if(c == 0) break;
+		if(sizeof(wchar_t) == 2 && c >= 0x10000 && c < 0x110000)
+		{
+			//wchar_t is utf-16 here, so this needs a surrogate pair
+			ret += (wchar_t)(0xD800 + ((c - 0x10000) >> 10));
+			ret += (wchar_t)(0xDC00 + ((c - 0x10000) & 0x3FF));
+		}
+		else
+			ret += (wchar_t)c;
+	}
 
 	delete[] tmp32;
-	delete[] tmp16;
 
 	return ret;
 }
 
+//convert a std::wstring to a utf-8 std::string
 std::string wcstombs(std::wstring str)
 {
+	//wchar_t is 16 bits (utf-16) on windows but 32 bits (utf-32) nearly everywhere else.
+	//utf16_to_char_string() needs real utf-16, so reinterpreting the wchar_t buffer as u16
+	//is only valid on windows; elsewhere it would see a null after the very first character.
 	size_t len = str.length();
-	char *tmp8 = new char[len*4+1]; //allow space for string to inflate
-	utf16_to_char_string((u16*)str.c_str(),tmp8,len*4+1);
+	u16 *tmp16 = new u16[len*2+1]; //each wchar_t yields at most a surrogate pair
+	size_t len16 = 0;
+	for(size_t i=0;i<len;i++)
+	{
+		const u32 c = (u32)str[i];
+		if(c == 0) break;
+		if(sizeof(wchar_t) > 2 && c >= 0x10000)
+		{
+			if(c >= 0x110000) { tmp16[len16++] = 0xFFFD; continue; } //not a valid code point
+			tmp16[len16++] = (u16)(0xD800 + ((c - 0x10000) >> 10));
+			tmp16[len16++] = (u16)(0xDC00 + ((c - 0x10000) & 0x3FF));
+		}
+		else
+			tmp16[len16++] = (u16)c;
+	}
+	tmp16[len16] = 0;
+
+	char *tmp8 = new char[len16*3+1]; //allow space for string to inflate
+	tmp8[0] = 0; //the conversion leaves the output untouched if it fails
+	utf16_to_char_string(tmp16,tmp8,len16*3+1);
 	std::string ret = tmp8;
 	delete[] tmp8;
+	delete[] tmp16;
 	return ret;
 }
 

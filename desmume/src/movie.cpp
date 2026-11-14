@@ -376,10 +376,11 @@ int MovieData::dump(EMUFILE &fp, bool binary)
 	}
 	else
 	{
-		std::wstring wnick((wchar_t*)CommonSettings.fwConfig.nickname, CommonSettings.fwConfig.nicknameLength);
+		//the firmware strings are u16, which is not the same thing as wchar_t on every platform
+		std::wstring wnick(CommonSettings.fwConfig.nickname, CommonSettings.fwConfig.nickname + CommonSettings.fwConfig.nicknameLength);
 		std::string nick = wcstombs(wnick);
 		
-		std::wstring wmessage((wchar_t*)CommonSettings.fwConfig.message, CommonSettings.fwConfig.messageLength);
+		std::wstring wmessage(CommonSettings.fwConfig.message, CommonSettings.fwConfig.message + CommonSettings.fwConfig.messageLength);
 		std::string message = wcstombs(wmessage);
 		
 		fp.fprintf("firmNickname %s\n", nick.c_str());
