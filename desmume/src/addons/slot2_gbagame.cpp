@@ -110,7 +110,9 @@ private:
 			u32 readed = (u32)fROM->fread(&romType, 4);
 
 			int pos = fROM->ftell();
-			int currPct = pos*100/(size-1);
+			//guard against division by zero on a 1-byte file, and do the math in 64 bits
+			//since pos*100 overflows a 32-bit int for ROMs larger than ~21MB (GBA ROMs go up to 32MB)
+			int currPct = (size > 1) ? (int)((s64)pos*100/(size-1)) : 100;
 			for(int i=lastpct;i<currPct;i++)
 			{
 				if(i%10==0)
