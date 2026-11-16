@@ -998,8 +998,13 @@ void NDSGeometryEngine::MatrixRestore(const u32 param)
 	}
 	else
 	{
-		//out of bounds errors function fully properly, but set errors
-		MMU_new.gxstat.se = (param >= 31) ? 1 : 0; //(not sure, this might be off by 1)
+		//out of bounds errors function fully properly, but set errors.
+		//The stack error flag is sticky -- it may only be set here. It is
+		//cleared solely by writing 1 to GXSTAT bit 15 (see TGXSTAT::write32).
+		if (param >= 31) //(not sure, this might be off by 1)
+		{
+			MMU_new.gxstat.se = 1;
+		}
 		
 		const u32 i = param & 0x0000001F;
 		MatrixCopy(this->_mtxCurrent[MATRIXMODE_POSITION], this->_mtxStackPosition[i]);
