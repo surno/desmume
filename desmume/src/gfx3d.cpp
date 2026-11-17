@@ -1989,8 +1989,8 @@ void NDSGeometryEngine::VectorTest(const u32 param)
 	// Convert the coordinates to 20.12 fixed-point format for our vector-matrix multiplication.
 	CACHE_ALIGN Vector4s32 testVec = {
 		( (s32)((param << 22) & 0xFFC00000) / (s32)(1 << 19) ) | (s32)((param & 0x000001C0) >>  6),
-		( (s32)((param << 12) & 0xFFC00000) / (s32)(1 << 19) ) | (s32)((param & 0x00007000) >> 16),
-		( (s32)((param <<  2) & 0xFFC00000) / (s32)(1 << 19) ) | (s32)((param & 0x01C00000) >> 26),
+		( (s32)((param << 12) & 0xFFC00000) / (s32)(1 << 19) ) | (s32)((param & 0x00070000) >> 16),
+		( (s32)((param <<  2) & 0xFFC00000) / (s32)(1 << 19) ) | (s32)((param & 0x1C000000) >> 26),
 		0
 	};
 	
