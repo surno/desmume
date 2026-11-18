@@ -1928,7 +1928,12 @@ static INLINE void write_timer(int proc, int timerIndex, u16 val)
 
 	MMU.timerON[proc][timerIndex] = val & 0x80;
 
-	switch(val&7)
+	// The count-up (cascade) bit is not used by timer 0, since there is no
+	// preceding timer to count overflows from. Ignore it there, otherwise
+	// timer 0 would be put into chained mode and never advance.
+	const u16 modeBits = (timerIndex == 0) ? (val & 3) : (val & 7);
+
+	switch(modeBits)
 	{
 		case 0 :
 			MMU.timerMODE[proc][timerIndex] = 0+1;
