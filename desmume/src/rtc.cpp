@@ -323,6 +323,11 @@ void rtcWrite(u16 val)
 					}
 					else
 					{
+						//the write handler below only ORs the incoming bits into rtc.data,
+						//so the buffer must be cleared first. otherwise bits left over from the
+						//previous transfer leak into the value being written
+						//(e.g. a read-modify-write of a status register could never clear a bit)
+						memset(&rtc.data[0], 0, sizeof(rtc.data));
 						rtc.cmdStat = 3;
 					}
 				}
