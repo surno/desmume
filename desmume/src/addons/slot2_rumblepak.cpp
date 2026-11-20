@@ -41,6 +41,8 @@ public:
 	
 	virtual void disconnect()
 	{
+		//frontends without force feedback support never set this
+		if (!FeedbackON) return;
 		FeedbackON(false);
 	}
 
